@@ -1,0 +1,35 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DM Mono', monospace;
+  background: #fafaf9;
+  color: #1c1917;
+  line-height: 1.6;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input:focus {
+  border-color: #1c1917 !important;
+  outline: 2px solid transparent;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.goal-card {
+  animation: fadeIn 0.3s ease-out;
+}
