@@ -27,6 +27,50 @@ const supabase = createClient(
 );
 
 // ============================================
+// THEME COLORS
+// ============================================
+
+const lightTheme = {
+  bg: '#ffffff',
+  bgSecondary: '#fafafa',
+  bgHover: '#f9f9f9',
+  bgCheckbox: '#f5f5f5',
+  text: '#111111',
+  textSecondary: '#333333',
+  textMuted: '#666666',
+  textFaint: '#999999',
+  border: '#e5e5e5',
+  borderLight: '#f0f0f0',
+  borderDashed: '#dddddd',
+  checkboxChecked: '#222222',
+  checkboxBorder: '#dddddd',
+  success: '#22c55e',
+  warning: '#eab308',
+  danger: '#ef4444',
+  modalOverlay: 'rgba(0,0,0,0.4)',
+};
+
+const darkTheme = {
+  bg: '#1a1a1a',
+  bgSecondary: '#252525',
+  bgHover: '#2a2a2a',
+  bgCheckbox: '#333333',
+  text: '#f0f0f0',
+  textSecondary: '#cccccc',
+  textMuted: '#999999',
+  textFaint: '#666666',
+  border: '#3a3a3a',
+  borderLight: '#2a2a2a',
+  borderDashed: '#444444',
+  checkboxChecked: '#f0f0f0',
+  checkboxBorder: '#555555',
+  success: '#22c55e',
+  warning: '#eab308',
+  danger: '#ef4444',
+  modalOverlay: 'rgba(0,0,0,0.7)',
+};
+
+// ============================================
 // UTILITY FUNCTIONS
 // ============================================
 
@@ -322,10 +366,462 @@ const useGoals = () => {
 };
 
 // ============================================
+// STYLE GENERATOR
+// ============================================
+
+const getStyles = (theme) => ({
+  container: {
+    maxWidth: '540px',
+    margin: '0 auto',
+    padding: '30px 20px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    background: theme.bg,
+    minHeight: '100vh',
+    boxSizing: 'border-box',
+  },
+  loading: {
+    textAlign: 'center',
+    padding: '40px',
+    color: theme.textFaint,
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+  },
+  title: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: theme.text,
+    margin: 0,
+  },
+  settingsSection: {
+    marginTop: '32px',
+    paddingTop: '16px',
+    borderTop: `1px solid ${theme.borderLight}`,
+  },
+  settingsBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: '12px',
+    color: theme.textFaint,
+    cursor: 'pointer',
+    padding: '4px 0',
+  },
+  weekSelectInline: {
+    padding: '4px 6px',
+    fontSize: '11px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '4px',
+    background: theme.bg,
+    color: theme.textMuted,
+    cursor: 'pointer',
+    outline: 'none',
+  },
+  milestonesBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginBottom: '16px',
+  },
+  milestoneBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 12px',
+    background: theme.bgSecondary,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  milestoneName: {
+    color: theme.textSecondary,
+    fontWeight: '500',
+    marginRight: '4px',
+  },
+  milestoneDays: {
+    color: theme.textMuted,
+  },
+  milestoneDivider: {
+    color: theme.border,
+  },
+  milestonePct: {
+    fontWeight: '600',
+  },
+  addMilestoneBtn: {
+    padding: '6px 12px',
+    background: 'transparent',
+    border: `1px dashed ${theme.borderDashed}`,
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: theme.textFaint,
+    cursor: 'pointer',
+  },
+  addGoalBtn: {
+    padding: '8px 14px',
+    background: 'transparent',
+    color: theme.textFaint,
+    border: `1px dashed ${theme.borderDashed}`,
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
+    marginBottom: '16px',
+    width: '100%',
+  },
+  addContainer: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '16px',
+    alignItems: 'flex-end',
+    padding: '14px',
+    background: theme.bgSecondary,
+    borderRadius: '8px',
+  },
+  addField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  addLabel: {
+    fontSize: '11px',
+    color: theme.textFaint,
+    fontWeight: '500',
+  },
+  input: {
+    width: '140px',
+    padding: '7px 10px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '5px',
+    fontSize: '13px',
+    outline: 'none',
+    background: theme.bg,
+    color: theme.text,
+  },
+  dayButtons: {
+    display: 'flex',
+    gap: '3px',
+  },
+  dayBtn: {
+    width: '24px',
+    height: '28px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    transition: 'all 0.1s ease',
+  },
+  dayBtnActive: {
+    background: theme.checkboxChecked,
+    color: theme.bg,
+    border: `1px solid ${theme.checkboxChecked}`,
+  },
+  dayBtnInactive: {
+    background: theme.bg,
+    color: theme.textMuted,
+    border: `1px solid ${theme.borderDashed}`,
+  },
+  addBtn: {
+    padding: '8px 16px',
+    background: theme.checkboxChecked,
+    color: theme.bg,
+    border: 'none',
+    borderRadius: '5px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  cancelBtn: {
+    padding: '8px 12px',
+    background: theme.bg,
+    color: theme.textFaint,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '5px',
+    fontSize: '16px',
+    cursor: 'pointer',
+    lineHeight: 1,
+  },
+  tableContainer: {
+    overflowX: 'auto',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '13px',
+  },
+  thGoal: {
+    textAlign: 'left',
+    padding: '8px 4px',
+    fontWeight: '500',
+    color: theme.textFaint,
+    minWidth: '140px',
+  },
+  thDay: {
+    textAlign: 'center',
+    padding: '8px 4px',
+    fontWeight: '600',
+    fontSize: '14px',
+    width: '44px',
+  },
+  thDayToday: {
+    color: theme.text,
+  },
+  thDayNormal: {
+    color: theme.textSecondary,
+  },
+  thDate: {
+    fontSize: '11px',
+    fontWeight: '400',
+    marginTop: '2px',
+  },
+  thDateToday: {
+    color: theme.textMuted,
+  },
+  thDateNormal: {
+    color: theme.textFaint,
+  },
+  thPct: {
+    textAlign: 'right',
+    padding: '8px 4px',
+    fontWeight: '500',
+    color: theme.textFaint,
+    width: '40px',
+  },
+  tdGoal: {
+    padding: '10px 4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    borderBottom: `1px solid ${theme.borderLight}`,
+  },
+  dragHandle: {
+    cursor: 'grab',
+    color: theme.textFaint,
+    fontSize: '12px',
+    userSelect: 'none',
+    transition: 'opacity 0.15s',
+  },
+  goalText: {
+    color: theme.textSecondary,
+    flex: 1,
+    whiteSpace: 'nowrap',
+  },
+  deleteBtn: {
+    background: 'none',
+    border: 'none',
+    color: theme.textFaint,
+    fontSize: '16px',
+    cursor: 'pointer',
+    padding: '2px 6px',
+    lineHeight: 1,
+    transition: 'opacity 0.15s',
+  },
+  tdDay: {
+    textAlign: 'center',
+    padding: '6px 4px',
+    borderBottom: `1px solid ${theme.borderLight}`,
+  },
+  tdDayToday: {
+    background: theme.bgHover,
+  },
+  tdPct: {
+    textAlign: 'right',
+    padding: '6px 4px',
+    fontSize: '12px',
+    fontWeight: '500',
+    borderBottom: `1px solid ${theme.borderLight}`,
+  },
+  checkbox: {
+    width: '20px',
+    height: '20px',
+    borderRadius: '4px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.1s ease',
+  },
+  checkboxChecked: {
+    background: theme.checkboxChecked,
+    border: `1px solid ${theme.checkboxChecked}`,
+  },
+  checkboxUnchecked: {
+    background: theme.bgCheckbox,
+    border: `1px solid ${theme.checkboxBorder}`,
+  },
+  check: {
+    color: theme.bg,
+    fontSize: '12px',
+    fontWeight: '600',
+  },
+  emptyRow: {
+    padding: '30px',
+    textAlign: 'center',
+    color: theme.textFaint,
+    fontSize: '13px',
+  },
+  performanceSection: {
+    marginTop: '24px',
+  },
+  performanceToggle: {
+    background: 'none',
+    border: 'none',
+    color: theme.textFaint,
+    fontSize: '12px',
+    cursor: 'pointer',
+    padding: '4px 0',
+    marginBottom: '8px',
+  },
+  performanceTable: {
+    overflowX: 'auto',
+  },
+  thWeek: {
+    textAlign: 'center',
+    padding: '8px 6px',
+    fontWeight: '500',
+    color: theme.textFaint,
+    fontSize: '10px',
+    minWidth: '50px',
+  },
+  tdGoalPerf: {
+    padding: '8px 4px',
+    color: theme.textMuted,
+    fontSize: '12px',
+  },
+  tdPerfPct: {
+    textAlign: 'center',
+    padding: '8px 6px',
+    fontSize: '11px',
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: theme.modalOverlay,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modal: {
+    background: theme.bg,
+    borderRadius: '12px',
+    padding: '24px',
+    width: '90%',
+    maxWidth: '360px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+  },
+  modalTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: theme.text,
+    margin: '0 0 20px 0',
+  },
+  modalField: {
+    marginBottom: '16px',
+  },
+  modalRow: {
+    display: 'flex',
+    gap: '12px',
+  },
+  modalLabel: {
+    display: 'block',
+    fontSize: '12px',
+    color: theme.textMuted,
+    marginBottom: '6px',
+    fontWeight: '500',
+  },
+  modalHint: {
+    fontSize: '11px',
+    color: theme.textFaint,
+    margin: '0 0 8px 0',
+  },
+  modalInput: {
+    width: '100%',
+    padding: '10px 12px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box',
+    background: theme.bg,
+    color: theme.text,
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '10px',
+    marginTop: '24px',
+  },
+  modalDeleteBtn: {
+    padding: '10px 16px',
+    background: theme.bg,
+    color: theme.danger,
+    border: `1px solid ${theme.danger}`,
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  modalCancelBtn: {
+    padding: '10px 16px',
+    background: theme.bg,
+    color: theme.textMuted,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  modalSaveBtn: {
+    padding: '10px 20px',
+    background: theme.checkboxChecked,
+    color: theme.bg,
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  // Toggle switch
+  toggleContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  toggleSwitch: {
+    width: '44px',
+    height: '24px',
+    borderRadius: '12px',
+    padding: '2px',
+    cursor: 'pointer',
+    transition: 'background 0.2s ease',
+  },
+  toggleSwitchOn: {
+    background: theme.success,
+  },
+  toggleSwitchOff: {
+    background: theme.border,
+  },
+  toggleKnob: {
+    width: '20px',
+    height: '20px',
+    borderRadius: '10px',
+    background: '#fff',
+    transition: 'transform 0.2s ease',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+  },
+  toggleKnobOn: {
+    transform: 'translateX(20px)',
+  },
+  toggleKnobOff: {
+    transform: 'translateX(0)',
+  },
+});
+
+// ============================================
 // SORTABLE ROW COMPONENT
 // ============================================
 
-function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal }) {
+function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, styles, theme }) {
   const [isHovered, setIsHovered] = useState(false);
   
   const {
@@ -382,14 +878,13 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal 
         return (
           <td key={date} style={{
             ...styles.tdDay,
-            background: isToday ? '#f9f9f9' : 'transparent',
+            ...(isToday ? styles.tdDayToday : {}),
           }}>
             <div
               onClick={() => toggleEntry(goal.id, date)}
               style={{
                 ...styles.checkbox,
-                background: isChecked ? '#222' : '#f5f5f5',
-                border: `1px solid ${isChecked ? '#222' : '#ddd'}`,
+                ...(isChecked ? styles.checkboxChecked : styles.checkboxUnchecked),
               }}
             >
               {isChecked && <span style={styles.check}>✓</span>}
@@ -399,7 +894,7 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal 
       })}
       <td style={{
         ...styles.tdPct,
-        color: pct >= 100 ? '#22c55e' : '#999'
+        color: pct >= 100 ? theme.success : theme.textFaint
       }}>
         {pct}%
       </td>
@@ -411,7 +906,7 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal 
 // MILESTONE BADGE COMPONENT
 // ============================================
 
-function MilestoneBadge({ milestone, goals, entries, onEdit }) {
+function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme }) {
   const today = getToday();
   
   const { daysRemaining, overallPct } = useMemo(() => {
@@ -455,7 +950,7 @@ function MilestoneBadge({ milestone, goals, entries, onEdit }) {
       <span style={styles.milestoneDivider}>|</span>
       <span style={{
         ...styles.milestonePct,
-        color: overallPct >= 80 ? '#22c55e' : overallPct >= 50 ? '#eab308' : '#999'
+        color: overallPct >= 80 ? theme.success : overallPct >= 50 ? theme.warning : theme.textFaint
       }}>{overallPct}%</span>
     </button>
   );
@@ -465,7 +960,7 @@ function MilestoneBadge({ milestone, goals, entries, onEdit }) {
 // MILESTONES BAR COMPONENT
 // ============================================
 
-function MilestonesBar({ milestones, goals, entries, onEdit, onAdd }) {
+function MilestonesBar({ milestones, goals, entries, onEdit, onAdd, styles, theme }) {
   return (
     <div style={styles.milestonesBar}>
       {milestones.map(milestone => (
@@ -475,6 +970,8 @@ function MilestonesBar({ milestones, goals, entries, onEdit, onAdd }) {
           goals={goals}
           entries={entries}
           onEdit={onEdit}
+          styles={styles}
+          theme={theme}
         />
       ))}
       <button onClick={onAdd} style={styles.addMilestoneBtn}>
@@ -488,7 +985,7 @@ function MilestonesBar({ milestones, goals, entries, onEdit, onAdd }) {
 // MILESTONE EDITOR MODAL
 // ============================================
 
-function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
+function MilestoneEditor({ milestone, onSave, onDelete, onClose, styles }) {
   const [name, setName] = useState(milestone?.name || '');
   const [startDate, setStartDate] = useState(milestone?.start_date || getToday());
   const [targetDate, setTargetDate] = useState(milestone?.target_date || '');
@@ -563,7 +1060,7 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
 // SETTINGS MODAL
 // ============================================
 
-function SettingsModal({ settings, onSave, onClose }) {
+function SettingsModal({ settings, onSave, onClose, styles, darkMode, onToggleDarkMode }) {
   const [trackingStartDate, setTrackingStartDate] = useState(
     settings.tracking_start_date || getToday()
   );
@@ -577,6 +1074,24 @@ function SettingsModal({ settings, onSave, onClose }) {
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <h3 style={styles.modalTitle}>Settings</h3>
+        
+        <div style={styles.modalField}>
+          <div style={styles.toggleContainer}>
+            <label style={styles.modalLabel}>Dark Mode</label>
+            <div 
+              onClick={onToggleDarkMode}
+              style={{
+                ...styles.toggleSwitch,
+                ...(darkMode ? styles.toggleSwitchOn : styles.toggleSwitchOff),
+              }}
+            >
+              <div style={{
+                ...styles.toggleKnob,
+                ...(darkMode ? styles.toggleKnobOn : styles.toggleKnobOff),
+              }} />
+            </div>
+          </div>
+        </div>
         
         <div style={styles.modalField}>
           <label style={styles.modalLabel}>Tracking Start Date</label>
@@ -620,6 +1135,10 @@ export default function App() {
   const [showMilestoneEditor, setShowMilestoneEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
+  const darkMode = settings.dark_mode === 'true';
+  const theme = darkMode ? darkTheme : lightTheme;
+  const styles = useMemo(() => getStyles(theme), [theme]);
+  
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const trackingStartDate = settings.tracking_start_date || getToday();
@@ -650,7 +1169,6 @@ export default function App() {
       const dates = getWeekDates(i);
       const weekStart = dates[0];
       
-      // Stop if we've gone before tracking start date
       if (weekStart < trackingStartDate) break;
       
       const hasData = goals.some(goal => 
@@ -708,6 +1226,16 @@ export default function App() {
     setShowMilestoneEditor(true);
   };
 
+  const handleToggleDarkMode = () => {
+    saveSetting('dark_mode', darkMode ? 'false' : 'true');
+  };
+
+  // Set body background color for dark mode
+  useEffect(() => {
+    document.body.style.background = theme.bg;
+    document.body.style.margin = '0';
+  }, [theme]);
+
   if (!isLoaded) return <div style={styles.loading}>...</div>;
 
   return (
@@ -724,6 +1252,8 @@ export default function App() {
         entries={entries}
         onEdit={handleEditMilestone}
         onAdd={handleAddMilestone}
+        styles={styles}
+        theme={theme}
       />
 
       {/* Add Goal */}
@@ -754,9 +1284,7 @@ export default function App() {
                   onClick={() => setNewTarget(n)}
                   style={{
                     ...styles.dayBtn,
-                    background: newTarget === n ? '#222' : '#fff',
-                    color: newTarget === n ? '#fff' : '#666',
-                    borderColor: newTarget === n ? '#222' : '#ddd'
+                    ...(newTarget === n ? styles.dayBtnActive : styles.dayBtnInactive),
                   }}
                 >
                   {n}
@@ -792,10 +1320,10 @@ export default function App() {
                     key={i} 
                     style={styles.thDay}
                   >
-                    <div style={{ color: isToday ? '#000' : '#333' }}>{day}</div>
+                    <div style={isToday ? styles.thDayToday : styles.thDayNormal}>{day}</div>
                     <div style={{ 
                       ...styles.thDate, 
-                      color: isToday ? '#666' : '#aaa' 
+                      ...(isToday ? styles.thDateToday : styles.thDateNormal),
                     }}>
                       {formatDayDate(weekDates[i])}
                     </div>
@@ -831,6 +1359,8 @@ export default function App() {
                       entries={entries}
                       toggleEntry={toggleEntry}
                       deleteGoal={deleteGoal}
+                      styles={styles}
+                      theme={theme}
                     />
                   ))}
                 </SortableContext>
@@ -882,7 +1412,7 @@ export default function App() {
                             key={weeksWithData[i].offset} 
                             style={{
                               ...styles.tdPerfPct,
-                              color: pct >= 100 ? '#22c55e' : '#999'
+                              color: pct >= 100 ? theme.success : theme.textFaint
                             }}
                           >
                             {pct}%
@@ -891,7 +1421,7 @@ export default function App() {
                         <td style={{
                           ...styles.tdPerfPct,
                           fontWeight: '600',
-                          color: avgPct >= 100 ? '#22c55e' : '#999'
+                          color: avgPct >= 100 ? theme.success : theme.textFaint
                         }}>
                           {avgPct}%
                         </td>
@@ -922,6 +1452,7 @@ export default function App() {
           onSave={saveMilestone}
           onDelete={deleteMilestone}
           onClose={() => setShowMilestoneEditor(false)}
+          styles={styles}
         />
       )}
 
@@ -931,399 +1462,11 @@ export default function App() {
           settings={settings}
           onSave={saveSetting}
           onClose={() => setShowSettings(false)}
+          styles={styles}
+          darkMode={darkMode}
+          onToggleDarkMode={handleToggleDarkMode}
         />
       )}
     </div>
   );
 }
-
-// ============================================
-// STYLES
-// ============================================
-
-const styles = {
-  container: {
-    maxWidth: '540px',
-    margin: '0 auto',
-    padding: '30px 20px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  },
-  loading: {
-    textAlign: 'center',
-    padding: '40px',
-    color: '#999',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
-  title: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#111',
-    margin: 0,
-  },
-  settingsSection: {
-    marginTop: '32px',
-    paddingTop: '16px',
-    borderTop: '1px solid #f0f0f0',
-  },
-  settingsBtn: {
-    background: 'none',
-    border: 'none',
-    fontSize: '12px',
-    color: '#999',
-    cursor: 'pointer',
-    padding: '4px 0',
-  },
-  weekSelect: {
-    padding: '6px 10px',
-    fontSize: '13px',
-    border: '1px solid #e0e0e0',
-    borderRadius: '6px',
-    background: '#fff',
-    color: '#666',
-    cursor: 'pointer',
-    outline: 'none',
-  },
-  weekSelectInline: {
-    padding: '4px 6px',
-    fontSize: '11px',
-    border: '1px solid #e5e5e5',
-    borderRadius: '4px',
-    background: '#fff',
-    color: '#666',
-    cursor: 'pointer',
-    outline: 'none',
-  },
-  milestonesBar: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-    marginBottom: '16px',
-  },
-  milestoneBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '6px 12px',
-    background: '#f9f9f9',
-    border: '1px solid #e5e5e5',
-    borderRadius: '6px',
-    fontSize: '12px',
-    cursor: 'pointer',
-  },
-  milestoneName: {
-    color: '#333',
-    fontWeight: '500',
-    marginRight: '4px',
-  },
-  milestoneDays: {
-    color: '#666',
-  },
-  milestoneDivider: {
-    color: '#ddd',
-  },
-  milestonePct: {
-    fontWeight: '600',
-  },
-  addMilestoneBtn: {
-    padding: '6px 12px',
-    background: 'transparent',
-    border: '1px dashed #ddd',
-    borderRadius: '6px',
-    fontSize: '12px',
-    color: '#999',
-    cursor: 'pointer',
-  },
-  addGoalBtn: {
-    padding: '8px 14px',
-    background: 'transparent',
-    color: '#999',
-    border: '1px dashed #ddd',
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-    marginBottom: '16px',
-    width: '100%',
-  },
-  addContainer: {
-    display: 'flex',
-    gap: '12px',
-    marginBottom: '16px',
-    alignItems: 'flex-end',
-    padding: '14px',
-    background: '#fafafa',
-    borderRadius: '8px',
-  },
-  addField: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  addLabel: {
-    fontSize: '11px',
-    color: '#999',
-    fontWeight: '500',
-  },
-  input: {
-    width: '140px',
-    padding: '7px 10px',
-    border: '1px solid #e0e0e0',
-    borderRadius: '5px',
-    fontSize: '13px',
-    outline: 'none',
-  },
-  dayButtons: {
-    display: 'flex',
-    gap: '3px',
-  },
-  dayBtn: {
-    width: '24px',
-    height: '28px',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    fontSize: '12px',
-    cursor: 'pointer',
-    transition: 'all 0.1s ease',
-  },
-  addBtn: {
-    padding: '8px 16px',
-    background: '#222',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '5px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  cancelBtn: {
-    padding: '8px 12px',
-    background: '#fff',
-    color: '#999',
-    border: '1px solid #e0e0e0',
-    borderRadius: '5px',
-    fontSize: '16px',
-    cursor: 'pointer',
-    lineHeight: 1,
-  },
-  tableContainer: {
-    overflowX: 'auto',
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: '13px',
-  },
-  thGoal: {
-    textAlign: 'left',
-    padding: '8px 4px',
-    fontWeight: '500',
-    color: '#bbb',
-    minWidth: '140px',
-  },
-  thDay: {
-    textAlign: 'center',
-    padding: '8px 4px',
-    fontWeight: '600',
-    fontSize: '14px',
-    width: '44px',
-    color: '#222',
-  },
-  thDate: {
-    fontSize: '11px',
-    fontWeight: '400',
-    marginTop: '2px',
-    color: '#999',
-  },
-  thPct: {
-    textAlign: 'right',
-    padding: '8px 4px',
-    fontWeight: '500',
-    color: '#bbb',
-    width: '40px',
-  },
-  tdGoal: {
-    padding: '10px 4px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    borderBottom: '1px solid #f5f5f5',
-  },
-  dragHandle: {
-    cursor: 'grab',
-    color: '#ccc',
-    fontSize: '12px',
-    userSelect: 'none',
-    transition: 'opacity 0.15s',
-  },
-  goalText: {
-    color: '#333',
-    flex: 1,
-    whiteSpace: 'nowrap',
-  },
-  deleteBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#ccc',
-    fontSize: '16px',
-    cursor: 'pointer',
-    padding: '2px 6px',
-    lineHeight: 1,
-    transition: 'opacity 0.15s',
-  },
-  tdDay: {
-    textAlign: 'center',
-    padding: '6px 4px',
-    borderBottom: '1px solid #f5f5f5',
-  },
-  tdPct: {
-    textAlign: 'right',
-    padding: '6px 4px',
-    fontSize: '12px',
-    fontWeight: '500',
-    borderBottom: '1px solid #f5f5f5',
-  },
-  checkbox: {
-    width: '20px',
-    height: '20px',
-    borderRadius: '4px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    transition: 'all 0.1s ease',
-  },
-  check: {
-    color: '#fff',
-    fontSize: '12px',
-    fontWeight: '600',
-  },
-  emptyRow: {
-    padding: '30px',
-    textAlign: 'center',
-    color: '#ccc',
-    fontSize: '13px',
-  },
-  performanceSection: {
-    marginTop: '24px',
-  },
-  performanceToggle: {
-    background: 'none',
-    border: 'none',
-    color: '#999',
-    fontSize: '12px',
-    cursor: 'pointer',
-    padding: '4px 0',
-    marginBottom: '8px',
-  },
-  performanceTable: {
-    overflowX: 'auto',
-  },
-  thWeek: {
-    textAlign: 'center',
-    padding: '8px 6px',
-    fontWeight: '500',
-    color: '#bbb',
-    fontSize: '10px',
-    minWidth: '50px',
-  },
-  tdGoalPerf: {
-    padding: '8px 4px',
-    color: '#666',
-    fontSize: '12px',
-  },
-  tdPerfPct: {
-    textAlign: 'center',
-    padding: '8px 6px',
-    fontSize: '11px',
-  },
-  // Modal styles
-  modalOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.4)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  modal: {
-    background: '#fff',
-    borderRadius: '12px',
-    padding: '24px',
-    width: '90%',
-    maxWidth: '360px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-  },
-  modalTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#111',
-    margin: '0 0 20px 0',
-  },
-  modalField: {
-    marginBottom: '16px',
-  },
-  modalRow: {
-    display: 'flex',
-    gap: '12px',
-  },
-  modalLabel: {
-    display: 'block',
-    fontSize: '12px',
-    color: '#666',
-    marginBottom: '6px',
-    fontWeight: '500',
-  },
-  modalHint: {
-    fontSize: '11px',
-    color: '#999',
-    margin: '0 0 8px 0',
-  },
-  modalInput: {
-    width: '100%',
-    padding: '10px 12px',
-    border: '1px solid #e0e0e0',
-    borderRadius: '6px',
-    fontSize: '14px',
-    outline: 'none',
-    boxSizing: 'border-box',
-  },
-  modalActions: {
-    display: 'flex',
-    gap: '10px',
-    marginTop: '24px',
-  },
-  modalDeleteBtn: {
-    padding: '10px 16px',
-    background: '#fff',
-    color: '#ef4444',
-    border: '1px solid #fecaca',
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  modalCancelBtn: {
-    padding: '10px 16px',
-    background: '#fff',
-    color: '#666',
-    border: '1px solid #e0e0e0',
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  modalSaveBtn: {
-    padding: '10px 20px',
-    background: '#222',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-};
