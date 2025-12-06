@@ -67,6 +67,13 @@ const formatDayDate = (dateStr) => {
   return `${month}/${day}`;
 };
 
+const daysBetween = (date1, date2) => {
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  const diffTime = d2 - d1;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ============================================
@@ -76,6 +83,7 @@ const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const useGoals = () => {
   const [goals, setGoals] = useState([]);
   const [entries, setEntries] = useState({});
+  const [milestone, setMilestone] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -95,6 +103,16 @@ const useGoals = () => {
         
         if (entriesError) throw entriesError;
         
+        const { data: milestoneData, error: milestoneError } = await supabase
+          .from('milestone')
+          .select('*')
+          .limit(1)
+          .single();
+        
+        if (milestoneError && milestoneError.code !== 'PGRST116') {
+          console.error('Milestone error:', milestoneError);
+        }
+        
         const entriesMap = {};
         entriesData?.forEach(entry => {
           entriesMap[`${entry.goal_id}-${entry.date}`] = entry.achieved;
@@ -102,6 +120,7 @@ const useGoals = () => {
         
         setGoals(goalsData || []);
         setEntries(entriesMap);
+        setMilestone(milestoneData || null);
       } catch (err) {
         console.error('Error loading data:', err);
       }
@@ -208,7 +227,56 @@ const useGoals = () => {
     }
   }, [entries]);
 
-  return { goals, entries, isLoaded, addGoal, deleteGoal, toggleEntry, reorderGoals };
+  const saveMilestone = useCallback(async (milestoneData) => {
+    try {
+      if (milestone?.id) {
+        // Update existing
+        const { data, error } = await supabase
+          .from('milestone')
+          .update(milestoneData)
+          .eq('id', milestone.id)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        setMilestone(data);
+      } else {
+        // Insert new
+        const { data, error } = await supabase
+          .from('milestone')
+          .insert(milestoneData)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        setMilestone(data);
+      }
+    } catch (err) {
+      console.error('Error saving milestone:', err);
+    }
+  }, [milestone]);
+
+  const deleteMilestone = useCallback(async () => {
+    if (!milestone?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('milestone')
+        .delete()
+        .eq('id', milestone.id);
+      
+      if (error) throw error;
+      setMilestone(null);
+    } catch (err) {
+      console.error('Error deleting milestone:', err);
+    }
+  }, [milestone]);
+
+  return { 
+    goals, entries, milestone, isLoaded, 
+    addGoal, deleteGoal, toggleEntry, reorderGoals,
+    saveMilestone, deleteMilestone 
+  };
 };
 
 // ============================================
@@ -298,16 +366,163 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal 
 }
 
 // ============================================
+// MILESTONE BADGE COMPONENT
+// ============================================
+
+function MilestoneBadge({ milestone, goals, entries, onEdit }) {
+  const today = getToday();
+  
+  const { daysRemaining, overallPct } = useMemo(() => {
+    if (!milestone) return { daysRemaining: 0, overallPct: 0 };
+    
+    const days = daysBetween(today, milestone.target_date);
+    
+    // Calculate overall % from start_date to today
+    const startDate = new Date(milestone.start_date);
+    const endDate = new Date(today);
+    
+    let totalExpected = 0;
+    let totalAchieved = 0;
+    
+    // For each goal, calculate expected vs achieved
+    goals.forEach(goal => {
+      const target = goal.target || 7;
+      
+      // Count days from start to today
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateStr = getDateString(currentDate);
+        const dayOfWeek = currentDate.getDay();
+        
+        // Add to expected based on weekly target (simplified: target/7 per day)
+        totalExpected += target / 7;
+        
+        // Check if achieved
+        if (entries[`${goal.id}-${dateStr}`]) {
+          totalAchieved++;
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+    
+    const pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
+    
+    return { daysRemaining: days, overallPct: pct };
+  }, [milestone, goals, entries, today]);
+
+  if (!milestone) {
+    return (
+      <button onClick={onEdit} style={styles.milestoneBadgeEmpty}>
+        + Set milestone
+      </button>
+    );
+  }
+
+  return (
+    <button onClick={onEdit} style={styles.milestoneBadge}>
+      <span style={styles.milestoneIcon}>🎯</span>
+      <span style={styles.milestoneDays}>{daysRemaining}d</span>
+      <span style={styles.milestoneDivider}>|</span>
+      <span style={{
+        ...styles.milestonePct,
+        color: overallPct >= 80 ? '#22c55e' : overallPct >= 50 ? '#eab308' : '#999'
+      }}>{overallPct}%</span>
+    </button>
+  );
+}
+
+// ============================================
+// MILESTONE EDITOR MODAL
+// ============================================
+
+function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
+  const [name, setName] = useState(milestone?.name || '');
+  const [startDate, setStartDate] = useState(milestone?.start_date || getToday());
+  const [targetDate, setTargetDate] = useState(milestone?.target_date || '');
+
+  const handleSave = () => {
+    if (!name.trim() || !targetDate) return;
+    onSave({
+      name: name.trim(),
+      start_date: startDate,
+      target_date: targetDate
+    });
+    onClose();
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>
+          {milestone ? 'Edit Milestone' : 'Set Milestone'}
+        </h3>
+        
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Bike Race"
+            style={styles.modalInput}
+            autoFocus
+          />
+        </div>
+        
+        <div style={styles.modalRow}>
+          <div style={styles.modalField}>
+            <label style={styles.modalLabel}>Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              style={styles.modalInput}
+            />
+          </div>
+          
+          <div style={styles.modalField}>
+            <label style={styles.modalLabel}>Target Date</label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+              style={styles.modalInput}
+            />
+          </div>
+        </div>
+        
+        <div style={styles.modalActions}>
+          {milestone && (
+            <button onClick={() => { onDelete(); onClose(); }} style={styles.modalDeleteBtn}>
+              Delete
+            </button>
+          )}
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={styles.modalCancelBtn}>Cancel</button>
+          <button onClick={handleSave} style={styles.modalSaveBtn}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 
 export default function App() {
-  const { goals, entries, isLoaded, addGoal, deleteGoal, toggleEntry, reorderGoals } = useGoals();
+  const { 
+    goals, entries, milestone, isLoaded, 
+    addGoal, deleteGoal, toggleEntry, reorderGoals,
+    saveMilestone, deleteMilestone 
+  } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPerformance, setShowPerformance] = useState(false);
+  const [showMilestoneEditor, setShowMilestoneEditor] = useState(false);
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
@@ -386,15 +601,23 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
-        <select 
-          value={weekOffset} 
-          onChange={(e) => setWeekOffset(parseInt(e.target.value))}
-          style={styles.weekSelect}
-        >
-          {weekOptions.map(opt => (
-            <option key={opt.offset} value={opt.offset}>{opt.label}</option>
-          ))}
-        </select>
+        <div style={styles.headerRight}>
+          <MilestoneBadge 
+            milestone={milestone}
+            goals={goals}
+            entries={entries}
+            onEdit={() => setShowMilestoneEditor(true)}
+          />
+          <select 
+            value={weekOffset} 
+            onChange={(e) => setWeekOffset(parseInt(e.target.value))}
+            style={styles.weekSelect}
+          >
+            {weekOptions.map(opt => (
+              <option key={opt.offset} value={opt.offset}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Add Goal */}
@@ -565,6 +788,16 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* Milestone Editor Modal */}
+      {showMilestoneEditor && (
+        <MilestoneEditor
+          milestone={milestone}
+          onSave={saveMilestone}
+          onDelete={deleteMilestone}
+          onClose={() => setShowMilestoneEditor(false)}
+        />
+      )}
     </div>
   );
 }
@@ -575,7 +808,7 @@ export default function App() {
 
 const styles = {
   container: {
-    maxWidth: '500px',
+    maxWidth: '540px',
     margin: '0 auto',
     padding: '30px 20px',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -590,12 +823,19 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '24px',
+    flexWrap: 'wrap',
+    gap: '12px',
   },
   title: {
     fontSize: '18px',
     fontWeight: '600',
     color: '#111',
     margin: 0,
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   },
   weekSelect: {
     padding: '6px 10px',
@@ -606,6 +846,39 @@ const styles = {
     color: '#666',
     cursor: 'pointer',
     outline: 'none',
+  },
+  milestoneBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '5px 10px',
+    background: '#f9f9f9',
+    border: '1px solid #e5e5e5',
+    borderRadius: '6px',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  milestoneBadgeEmpty: {
+    padding: '5px 10px',
+    background: 'transparent',
+    border: '1px dashed #ddd',
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#999',
+    cursor: 'pointer',
+  },
+  milestoneIcon: {
+    fontSize: '11px',
+  },
+  milestoneDays: {
+    color: '#666',
+    fontWeight: '500',
+  },
+  milestoneDivider: {
+    color: '#ddd',
+  },
+  milestonePct: {
+    fontWeight: '600',
   },
   addGoalBtn: {
     padding: '8px 14px',
@@ -807,5 +1080,87 @@ const styles = {
     textAlign: 'center',
     padding: '8px 6px',
     fontSize: '11px',
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modal: {
+    background: '#fff',
+    borderRadius: '12px',
+    padding: '24px',
+    width: '90%',
+    maxWidth: '360px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+  },
+  modalTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#111',
+    margin: '0 0 20px 0',
+  },
+  modalField: {
+    marginBottom: '16px',
+  },
+  modalRow: {
+    display: 'flex',
+    gap: '12px',
+  },
+  modalLabel: {
+    display: 'block',
+    fontSize: '12px',
+    color: '#666',
+    marginBottom: '6px',
+    fontWeight: '500',
+  },
+  modalInput: {
+    width: '100%',
+    padding: '10px 12px',
+    border: '1px solid #e0e0e0',
+    borderRadius: '6px',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '10px',
+    marginTop: '24px',
+  },
+  modalDeleteBtn: {
+    padding: '10px 16px',
+    background: '#fff',
+    color: '#ef4444',
+    border: '1px solid #fecaca',
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  modalCancelBtn: {
+    padding: '10px 16px',
+    background: '#fff',
+    color: '#666',
+    border: '1px solid #e0e0e0',
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  modalSaveBtn: {
+    padding: '10px 20px',
+    background: '#222',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    cursor: 'pointer',
   },
 };
