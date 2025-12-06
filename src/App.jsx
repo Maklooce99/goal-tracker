@@ -300,6 +300,7 @@ export default function App() {
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [showAddForm, setShowAddForm] = useState(false);
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
@@ -358,7 +359,14 @@ export default function App() {
       addGoal(newGoal, newTarget);
       setNewGoal('');
       setNewTarget(7);
+      setShowAddForm(false);
     }
+  };
+
+  const handleCancelAdd = () => {
+    setNewGoal('');
+    setNewTarget(7);
+    setShowAddForm(false);
   };
 
   const handleKeyDown = (e) => {
@@ -385,40 +393,48 @@ export default function App() {
         </div>
       </div>
 
-      {/* Add Goal Input */}
-      <div style={styles.addContainer}>
-        <div style={styles.addField}>
-          <label style={styles.addLabel}>Goal</label>
-          <input
-            type="text"
-            value={newGoal}
-            onChange={(e) => setNewGoal(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="e.g. Exercise"
-            style={styles.input}
-          />
-        </div>
-        <div style={styles.addField}>
-          <label style={styles.addLabel}>Days/week</label>
-          <div style={styles.dayButtons}>
-            {[1, 2, 3, 4, 5, 6, 7].map(n => (
-              <button
-                key={n}
-                onClick={() => setNewTarget(n)}
-                style={{
-                  ...styles.dayBtn,
-                  background: newTarget === n ? '#222' : '#fff',
-                  color: newTarget === n ? '#fff' : '#666',
-                  borderColor: newTarget === n ? '#222' : '#ddd'
-                }}
-              >
-                {n}
-              </button>
-            ))}
+      {/* Add Goal */}
+      {!showAddForm ? (
+        <button onClick={() => setShowAddForm(true)} style={styles.addGoalBtn}>
+          + Add Goal
+        </button>
+      ) : (
+        <div style={styles.addContainer}>
+          <div style={styles.addField}>
+            <label style={styles.addLabel}>Goal</label>
+            <input
+              type="text"
+              value={newGoal}
+              onChange={(e) => setNewGoal(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g. Exercise"
+              style={styles.input}
+              autoFocus
+            />
           </div>
+          <div style={styles.addField}>
+            <label style={styles.addLabel}>Days/week</label>
+            <div style={styles.dayButtons}>
+              {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setNewTarget(n)}
+                  style={{
+                    ...styles.dayBtn,
+                    background: newTarget === n ? '#222' : '#fff',
+                    color: newTarget === n ? '#fff' : '#666',
+                    borderColor: newTarget === n ? '#222' : '#ddd'
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
+          <button onClick={handleCancelAdd} style={styles.cancelBtn}>×</button>
         </div>
-        <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
-      </div>
+      )}
 
       {/* Table */}
       <div style={styles.tableContainer}>
@@ -675,11 +691,26 @@ const styles = {
     textAlign: 'center',
     color: '#999',
   },
+  addGoalBtn: {
+    padding: '10px 16px',
+    background: '#fff',
+    color: '#666',
+    border: '1px dashed #ddd',
+    borderRadius: '6px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    marginBottom: '16px',
+    width: '100%',
+  },
   addContainer: {
     display: 'flex',
     gap: '16px',
     marginBottom: '16px',
     alignItems: 'flex-end',
+    padding: '16px',
+    background: '#fafafa',
+    borderRadius: '8px',
+    border: '1px solid #eee',
   },
   addField: {
     display: 'flex',
@@ -720,6 +751,16 @@ const styles = {
     borderRadius: '6px',
     fontSize: '14px',
     cursor: 'pointer',
+  },
+  cancelBtn: {
+    padding: '10px 14px',
+    background: '#fff',
+    color: '#999',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    fontSize: '18px',
+    cursor: 'pointer',
+    lineHeight: 1,
   },
   performanceSection: {
     marginTop: '32px',
