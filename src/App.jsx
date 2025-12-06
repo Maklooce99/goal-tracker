@@ -815,13 +815,52 @@ const getStyles = (theme) => ({
   toggleKnobOff: {
     transform: 'translateX(0)',
   },
+  // Threshold styles
+  thresholdRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  thresholdItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  thresholdDot: {
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+  },
+  thresholdLabel: {
+    fontSize: '13px',
+    color: theme.textMuted,
+    width: '60px',
+  },
+  thresholdInput: {
+    width: '50px',
+    padding: '6px 8px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '4px',
+    fontSize: '13px',
+    background: theme.bg,
+    color: theme.text,
+    textAlign: 'center',
+  },
+  thresholdPercent: {
+    fontSize: '13px',
+    color: theme.textMuted,
+  },
+  thresholdValue: {
+    fontSize: '13px',
+    color: theme.textMuted,
+  },
 });
 
 // ============================================
 // SORTABLE ROW COMPONENT
 // ============================================
 
-function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, styles, theme }) {
+function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, styles, theme, thresholds }) {
   const [isHovered, setIsHovered] = useState(false);
   
   const {
@@ -842,6 +881,12 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
   const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
   const target = goal.target || 7;
   const pct = Math.round((achieved / target) * 100);
+  
+  const getPctColor = (pct) => {
+    if (pct >= thresholds.green) return theme.success;
+    if (pct >= thresholds.yellow) return theme.warning;
+    return theme.danger;
+  };
 
   return (
     <tr 
@@ -894,7 +939,7 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
       })}
       <td style={{
         ...styles.tdPct,
-        color: pct >= 100 ? theme.success : theme.textFaint
+        color: getPctColor(pct)
       }}>
         {pct}%
       </td>
@@ -906,7 +951,7 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
 // MILESTONE BADGE COMPONENT
 // ============================================
 
-function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme }) {
+function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme, thresholds }) {
   const today = getToday();
   
   const { daysRemaining, overallPct } = useMemo(() => {
@@ -943,6 +988,12 @@ function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme }) {
     return { daysRemaining: days, overallPct: pct };
   }, [milestone, goals, entries, today]);
 
+  const getPctColor = (pct) => {
+    if (pct >= thresholds.green) return theme.success;
+    if (pct >= thresholds.yellow) return theme.warning;
+    return theme.danger;
+  };
+
   return (
     <button onClick={() => onEdit(milestone)} style={styles.milestoneBadge}>
       <span style={styles.milestoneName}>{milestone.name}</span>
@@ -950,7 +1001,7 @@ function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme }) {
       <span style={styles.milestoneDivider}>|</span>
       <span style={{
         ...styles.milestonePct,
-        color: overallPct >= 80 ? theme.success : overallPct >= 50 ? theme.warning : theme.textFaint
+        color: getPctColor(overallPct)
       }}>{overallPct}%</span>
     </button>
   );
@@ -960,7 +1011,7 @@ function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme }) {
 // MILESTONES BAR COMPONENT
 // ============================================
 
-function MilestonesBar({ milestones, goals, entries, onEdit, onAdd, styles, theme }) {
+function MilestonesBar({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds }) {
   return (
     <div style={styles.milestonesBar}>
       {milestones.map(milestone => (
@@ -972,6 +1023,7 @@ function MilestonesBar({ milestones, goals, entries, onEdit, onAdd, styles, them
           onEdit={onEdit}
           styles={styles}
           theme={theme}
+          thresholds={thresholds}
         />
       ))}
       <button onClick={onAdd} style={styles.addMilestoneBtn}>
@@ -1060,13 +1112,21 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose, styles }) {
 // SETTINGS MODAL
 // ============================================
 
-function SettingsModal({ settings, onSave, onClose, styles, darkMode, onToggleDarkMode }) {
+function SettingsModal({ settings, onSave, onClose, styles, theme, darkMode, onToggleDarkMode }) {
   const [trackingStartDate, setTrackingStartDate] = useState(
     settings.tracking_start_date || getToday()
+  );
+  const [thresholdGreen, setThresholdGreen] = useState(
+    settings.threshold_green || '80'
+  );
+  const [thresholdYellow, setThresholdYellow] = useState(
+    settings.threshold_yellow || '50'
   );
 
   const handleSave = () => {
     onSave('tracking_start_date', trackingStartDate);
+    onSave('threshold_green', thresholdGreen);
+    onSave('threshold_yellow', thresholdYellow);
     onClose();
   };
 
@@ -1105,6 +1165,46 @@ function SettingsModal({ settings, onSave, onClose, styles, darkMode, onToggleDa
             style={styles.modalInput}
           />
         </div>
+
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Progress Thresholds</label>
+          <p style={styles.modalHint}>
+            Set the percentage thresholds for color indicators.
+          </p>
+          <div style={styles.thresholdRow}>
+            <div style={styles.thresholdItem}>
+              <span style={{ ...styles.thresholdDot, background: theme.success }}></span>
+              <span style={styles.thresholdLabel}>Green ≥</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={thresholdGreen}
+                onChange={e => setThresholdGreen(e.target.value)}
+                style={styles.thresholdInput}
+              />
+              <span style={styles.thresholdPercent}>%</span>
+            </div>
+            <div style={styles.thresholdItem}>
+              <span style={{ ...styles.thresholdDot, background: theme.warning }}></span>
+              <span style={styles.thresholdLabel}>Yellow ≥</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={thresholdYellow}
+                onChange={e => setThresholdYellow(e.target.value)}
+                style={styles.thresholdInput}
+              />
+              <span style={styles.thresholdPercent}>%</span>
+            </div>
+            <div style={styles.thresholdItem}>
+              <span style={{ ...styles.thresholdDot, background: theme.danger }}></span>
+              <span style={styles.thresholdLabel}>Red &lt;</span>
+              <span style={styles.thresholdValue}>{thresholdYellow}%</span>
+            </div>
+          </div>
+        </div>
         
         <div style={styles.modalActions}>
           <div style={{ flex: 1 }} />
@@ -1138,6 +1238,11 @@ export default function App() {
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
   const styles = useMemo(() => getStyles(theme), [theme]);
+  
+  const thresholds = useMemo(() => ({
+    green: parseInt(settings.threshold_green) || 80,
+    yellow: parseInt(settings.threshold_yellow) || 50,
+  }), [settings.threshold_green, settings.threshold_yellow]);
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
@@ -1254,6 +1359,7 @@ export default function App() {
         onAdd={handleAddMilestone}
         styles={styles}
         theme={theme}
+        thresholds={thresholds}
       />
 
       {/* Add Goal */}
@@ -1361,6 +1467,7 @@ export default function App() {
                       deleteGoal={deleteGoal}
                       styles={styles}
                       theme={theme}
+                      thresholds={thresholds}
                     />
                   ))}
                 </SortableContext>
@@ -1404,6 +1511,12 @@ export default function App() {
                     });
                     const avgPct = Math.round(weeklyPcts.reduce((a, b) => a + b, 0) / weeklyPcts.length);
                     
+                    const getPctColor = (pct) => {
+                      if (pct >= thresholds.green) return theme.success;
+                      if (pct >= thresholds.yellow) return theme.warning;
+                      return theme.danger;
+                    };
+                    
                     return (
                       <tr key={goal.id}>
                         <td style={styles.tdGoalPerf}>{goal.name}</td>
@@ -1412,7 +1525,7 @@ export default function App() {
                             key={weeksWithData[i].offset} 
                             style={{
                               ...styles.tdPerfPct,
-                              color: pct >= 100 ? theme.success : theme.textFaint
+                              color: getPctColor(pct)
                             }}
                           >
                             {pct}%
@@ -1421,7 +1534,7 @@ export default function App() {
                         <td style={{
                           ...styles.tdPerfPct,
                           fontWeight: '600',
-                          color: avgPct >= 100 ? theme.success : theme.textFaint
+                          color: getPctColor(avgPct)
                         }}>
                           {avgPct}%
                         </td>
@@ -1463,6 +1576,7 @@ export default function App() {
           onSave={saveSetting}
           onClose={() => setShowSettings(false)}
           styles={styles}
+          theme={theme}
           darkMode={darkMode}
           onToggleDarkMode={handleToggleDarkMode}
         />
