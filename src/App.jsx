@@ -265,15 +265,16 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal 
         const isChecked = entries[`${goal.id}-${date}`];
         const isToday = date === today;
         return (
-          <td key={date} style={styles.tdDay}>
+          <td key={date} style={{
+            ...styles.tdDay,
+            background: isToday ? '#f9f9f9' : 'transparent',
+          }}>
             <div
               onClick={() => toggleEntry(goal.id, date)}
               style={{
                 ...styles.checkbox,
                 background: isChecked ? '#222' : '#f5f5f5',
-                border: isToday 
-                  ? `2px solid ${isChecked ? '#222' : '#bbb'}`
-                  : `1px solid ${isChecked ? '#222' : '#ddd'}`,
+                border: `1px solid ${isChecked ? '#222' : '#ddd'}`,
               }}
             >
               {isChecked && <span style={styles.check}>✓</span>}
