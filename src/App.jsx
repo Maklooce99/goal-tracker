@@ -390,6 +390,15 @@ const getStyles = (theme) => ({
     alignItems: 'center',
     marginBottom: '16px',
   },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  darkModeLabel: {
+    fontSize: '12px',
+    color: theme.textFaint,
+  },
   title: {
     fontSize: '18px',
     fontWeight: '600',
@@ -1112,7 +1121,7 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose, styles }) {
 // SETTINGS MODAL
 // ============================================
 
-function SettingsModal({ settings, onSave, onClose, styles, theme, darkMode, onToggleDarkMode }) {
+function SettingsModal({ settings, onSave, onClose, styles, theme }) {
   const [trackingStartDate, setTrackingStartDate] = useState(
     settings.tracking_start_date || getToday()
   );
@@ -1134,24 +1143,6 @@ function SettingsModal({ settings, onSave, onClose, styles, theme, darkMode, onT
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <h3 style={styles.modalTitle}>Settings</h3>
-        
-        <div style={styles.modalField}>
-          <div style={styles.toggleContainer}>
-            <label style={styles.modalLabel}>Dark Mode</label>
-            <div 
-              onClick={onToggleDarkMode}
-              style={{
-                ...styles.toggleSwitch,
-                ...(darkMode ? styles.toggleSwitchOn : styles.toggleSwitchOff),
-              }}
-            >
-              <div style={{
-                ...styles.toggleKnob,
-                ...(darkMode ? styles.toggleKnobOn : styles.toggleKnobOff),
-              }} />
-            </div>
-          </div>
-        </div>
         
         <div style={styles.modalField}>
           <label style={styles.modalLabel}>Tracking Start Date</label>
@@ -1348,6 +1339,21 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
+        <div style={styles.headerRight}>
+          <span style={styles.darkModeLabel}>Dark Mode</span>
+          <div 
+            onClick={handleToggleDarkMode}
+            style={{
+              ...styles.toggleSwitch,
+              ...(darkMode ? styles.toggleSwitchOn : styles.toggleSwitchOff),
+            }}
+          >
+            <div style={{
+              ...styles.toggleKnob,
+              ...(darkMode ? styles.toggleKnobOn : styles.toggleKnobOff),
+            }} />
+          </div>
+        </div>
       </div>
 
       {/* Milestones Bar */}
@@ -1577,8 +1583,6 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           styles={styles}
           theme={theme}
-          darkMode={darkMode}
-          onToggleDarkMode={handleToggleDarkMode}
         />
       )}
     </div>
