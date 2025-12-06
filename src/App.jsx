@@ -62,6 +62,11 @@ const formatShortDate = (dateStr) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
+const formatDayDate = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return `${month}/${day}`;
+};
+
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ============================================
@@ -449,7 +454,8 @@ export default function App() {
                     color: weekDates[i] === today ? '#222' : '#bbb'
                   }}
                 >
-                  {day}
+                  <div>{day}</div>
+                  <div style={styles.thDate}>{formatDayDate(weekDates[i])}</div>
                 </th>
               ))}
               <th style={styles.thPct}></th>
@@ -683,10 +689,15 @@ const styles = {
   },
   thDay: {
     textAlign: 'center',
-    padding: '8px 4px',
+    padding: '6px 4px',
     fontWeight: '500',
     fontSize: '11px',
-    width: '36px',
+    width: '40px',
+  },
+  thDate: {
+    fontSize: '9px',
+    fontWeight: '400',
+    marginTop: '2px',
   },
   thPct: {
     textAlign: 'right',
