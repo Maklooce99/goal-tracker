@@ -56,6 +56,16 @@ const getWeekDates = (offset = 0) => {
   return dates;
 };
 
+const getWeekStart = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setHours(12, 0, 0, 0);
+  const dayOfWeek = date.getDay();
+  const adjustedDay = dayOfWeek === 0 ? 7 : dayOfWeek;
+  date.setDate(date.getDate() - (adjustedDay - 1));
+  return getDateString(date);
+};
+
 const formatShortDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
@@ -83,7 +93,7 @@ const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const useGoals = () => {
   const [goals, setGoals] = useState([]);
   const [entries, setEntries] = useState({});
-  const [milestone, setMilestone] = useState(null);
+  const [milestones, setMilestones] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -103,14 +113,13 @@ const useGoals = () => {
         
         if (entriesError) throw entriesError;
         
-        const { data: milestoneData, error: milestoneError } = await supabase
+        const { data: milestonesData, error: milestonesError } = await supabase
           .from('milestone')
           .select('*')
-          .limit(1)
-          .single();
+          .order('target_date', { ascending: true });
         
-        if (milestoneError && milestoneError.code !== 'PGRST116') {
-          console.error('Milestone error:', milestoneError);
+        if (milestonesError) {
+          console.error('Milestones error:', milestonesError);
         }
         
         const entriesMap = {};
@@ -120,7 +129,7 @@ const useGoals = () => {
         
         setGoals(goalsData || []);
         setEntries(entriesMap);
-        setMilestone(milestoneData || null);
+        setMilestones(milestonesData || []);
       } catch (err) {
         console.error('Error loading data:', err);
       }
@@ -227,19 +236,19 @@ const useGoals = () => {
     }
   }, [entries]);
 
-  const saveMilestone = useCallback(async (milestoneData) => {
+  const saveMilestone = useCallback(async (milestoneData, existingId = null) => {
     try {
-      if (milestone?.id) {
+      if (existingId) {
         // Update existing
         const { data, error } = await supabase
           .from('milestone')
           .update(milestoneData)
-          .eq('id', milestone.id)
+          .eq('id', existingId)
           .select()
           .single();
         
         if (error) throw error;
-        setMilestone(data);
+        setMilestones(prev => prev.map(m => m.id === existingId ? data : m));
       } else {
         // Insert new
         const { data, error } = await supabase
@@ -249,31 +258,33 @@ const useGoals = () => {
           .single();
         
         if (error) throw error;
-        setMilestone(data);
+        setMilestones(prev => [...prev, data].sort((a, b) => 
+          new Date(a.target_date) - new Date(b.target_date)
+        ));
       }
     } catch (err) {
       console.error('Error saving milestone:', err);
     }
-  }, [milestone]);
+  }, []);
 
-  const deleteMilestone = useCallback(async () => {
-    if (!milestone?.id) return;
+  const deleteMilestone = useCallback(async (id) => {
+    if (!id) return;
     
     try {
       const { error } = await supabase
         .from('milestone')
         .delete()
-        .eq('id', milestone.id);
+        .eq('id', id);
       
       if (error) throw error;
-      setMilestone(null);
+      setMilestones(prev => prev.filter(m => m.id !== id));
     } catch (err) {
       console.error('Error deleting milestone:', err);
     }
-  }, [milestone]);
+  }, []);
 
   return { 
-    goals, entries, milestone, isLoaded, 
+    goals, entries, milestones, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
     saveMilestone, deleteMilestone 
   };
@@ -377,31 +388,30 @@ function MilestoneBadge({ milestone, goals, entries, onEdit }) {
     
     const days = daysBetween(today, milestone.target_date);
     
-    // Calculate overall % from start_date to today
-    const startDate = new Date(milestone.start_date);
-    const endDate = new Date(today);
+    // Calculate by complete weeks for accurate comparison
+    const startWeek = getWeekStart(milestone.start_date);
+    const currentWeek = getWeekStart(today);
+    
+    // Count complete weeks from start to current week
+    const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
     
     let totalExpected = 0;
     let totalAchieved = 0;
     
-    // For each goal, calculate expected vs achieved
+    // For each goal, calculate expected vs achieved per complete week
     goals.forEach(goal => {
       const target = goal.target || 7;
+      totalExpected += target * weeksCount;
       
-      // Count days from start to today
-      let currentDate = new Date(startDate);
+      // Count achievements from start date to today
+      let currentDate = new Date(milestone.start_date);
+      const endDate = new Date(today);
+      
       while (currentDate <= endDate) {
         const dateStr = getDateString(currentDate);
-        const dayOfWeek = currentDate.getDay();
-        
-        // Add to expected based on weekly target (simplified: target/7 per day)
-        totalExpected += target / 7;
-        
-        // Check if achieved
         if (entries[`${goal.id}-${dateStr}`]) {
           totalAchieved++;
         }
-        
         currentDate.setDate(currentDate.getDate() + 1);
       }
     });
@@ -411,17 +421,9 @@ function MilestoneBadge({ milestone, goals, entries, onEdit }) {
     return { daysRemaining: days, overallPct: pct };
   }, [milestone, goals, entries, today]);
 
-  if (!milestone) {
-    return (
-      <button onClick={onEdit} style={styles.milestoneBadgeEmpty}>
-        + Set milestone
-      </button>
-    );
-  }
-
   return (
-    <button onClick={onEdit} style={styles.milestoneBadge}>
-      <span style={styles.milestoneIcon}>🎯</span>
+    <button onClick={() => onEdit(milestone)} style={styles.milestoneBadge}>
+      <span style={styles.milestoneName}>{milestone.name}</span>
       <span style={styles.milestoneDays}>{daysRemaining}d</span>
       <span style={styles.milestoneDivider}>|</span>
       <span style={{
@@ -429,6 +431,29 @@ function MilestoneBadge({ milestone, goals, entries, onEdit }) {
         color: overallPct >= 80 ? '#22c55e' : overallPct >= 50 ? '#eab308' : '#999'
       }}>{overallPct}%</span>
     </button>
+  );
+}
+
+// ============================================
+// MILESTONES BAR COMPONENT
+// ============================================
+
+function MilestonesBar({ milestones, goals, entries, onEdit, onAdd }) {
+  return (
+    <div style={styles.milestonesBar}>
+      {milestones.map(milestone => (
+        <MilestoneBadge
+          key={milestone.id}
+          milestone={milestone}
+          goals={goals}
+          entries={entries}
+          onEdit={onEdit}
+        />
+      ))}
+      <button onClick={onAdd} style={styles.addMilestoneBtn}>
+        + Milestone
+      </button>
+    </div>
   );
 }
 
@@ -447,7 +472,7 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
       name: name.trim(),
       start_date: startDate,
       target_date: targetDate
-    });
+    }, milestone?.id);
     onClose();
   };
 
@@ -455,7 +480,7 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <h3 style={styles.modalTitle}>
-          {milestone ? 'Edit Milestone' : 'Set Milestone'}
+          {milestone ? 'Edit Milestone' : 'Add Milestone'}
         </h3>
         
         <div style={styles.modalField}>
@@ -494,7 +519,7 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
         
         <div style={styles.modalActions}>
           {milestone && (
-            <button onClick={() => { onDelete(); onClose(); }} style={styles.modalDeleteBtn}>
+            <button onClick={() => { onDelete(milestone.id); onClose(); }} style={styles.modalDeleteBtn}>
               Delete
             </button>
           )}
@@ -513,7 +538,7 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
 
 export default function App() {
   const { 
-    goals, entries, milestone, isLoaded, 
+    goals, entries, milestones, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
     saveMilestone, deleteMilestone 
   } = useGoals();
@@ -522,6 +547,7 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPerformance, setShowPerformance] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState(null);
   const [showMilestoneEditor, setShowMilestoneEditor] = useState(false);
   
   const today = getToday();
@@ -594,6 +620,16 @@ export default function App() {
     if (e.key === 'Escape') handleCancelAdd();
   };
 
+  const handleEditMilestone = (milestone) => {
+    setEditingMilestone(milestone);
+    setShowMilestoneEditor(true);
+  };
+
+  const handleAddMilestone = () => {
+    setEditingMilestone(null);
+    setShowMilestoneEditor(true);
+  };
+
   if (!isLoaded) return <div style={styles.loading}>...</div>;
 
   return (
@@ -601,24 +637,25 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
-        <div style={styles.headerRight}>
-          <MilestoneBadge 
-            milestone={milestone}
-            goals={goals}
-            entries={entries}
-            onEdit={() => setShowMilestoneEditor(true)}
-          />
-          <select 
-            value={weekOffset} 
-            onChange={(e) => setWeekOffset(parseInt(e.target.value))}
-            style={styles.weekSelect}
-          >
-            {weekOptions.map(opt => (
-              <option key={opt.offset} value={opt.offset}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
+        <select 
+          value={weekOffset} 
+          onChange={(e) => setWeekOffset(parseInt(e.target.value))}
+          style={styles.weekSelect}
+        >
+          {weekOptions.map(opt => (
+            <option key={opt.offset} value={opt.offset}>{opt.label}</option>
+          ))}
+        </select>
       </div>
+
+      {/* Milestones Bar */}
+      <MilestonesBar
+        milestones={milestones}
+        goals={goals}
+        entries={entries}
+        onEdit={handleEditMilestone}
+        onAdd={handleAddMilestone}
+      />
 
       {/* Add Goal */}
       {!showAddForm ? (
@@ -792,7 +829,7 @@ export default function App() {
       {/* Milestone Editor Modal */}
       {showMilestoneEditor && (
         <MilestoneEditor
-          milestone={milestone}
+          milestone={editingMilestone}
           onSave={saveMilestone}
           onDelete={deleteMilestone}
           onClose={() => setShowMilestoneEditor(false)}
@@ -822,20 +859,13 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '24px',
-    flexWrap: 'wrap',
-    gap: '12px',
+    marginBottom: '16px',
   },
   title: {
     fontSize: '18px',
     fontWeight: '600',
     color: '#111',
     margin: 0,
-  },
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
   },
   weekSelect: {
     padding: '6px 10px',
@@ -847,38 +877,45 @@ const styles = {
     cursor: 'pointer',
     outline: 'none',
   },
+  milestonesBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginBottom: '16px',
+  },
   milestoneBadge: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '5px 10px',
+    gap: '8px',
+    padding: '6px 12px',
     background: '#f9f9f9',
     border: '1px solid #e5e5e5',
     borderRadius: '6px',
     fontSize: '12px',
     cursor: 'pointer',
   },
-  milestoneBadgeEmpty: {
-    padding: '5px 10px',
-    background: 'transparent',
-    border: '1px dashed #ddd',
-    borderRadius: '6px',
-    fontSize: '12px',
-    color: '#999',
-    cursor: 'pointer',
-  },
-  milestoneIcon: {
-    fontSize: '11px',
+  milestoneName: {
+    color: '#333',
+    fontWeight: '500',
+    marginRight: '4px',
   },
   milestoneDays: {
     color: '#666',
-    fontWeight: '500',
   },
   milestoneDivider: {
     color: '#ddd',
   },
   milestonePct: {
     fontWeight: '600',
+  },
+  addMilestoneBtn: {
+    padding: '6px 12px',
+    background: 'transparent',
+    border: '1px dashed #ddd',
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#999',
+    cursor: 'pointer',
   },
   addGoalBtn: {
     padding: '8px 14px',
