@@ -446,18 +446,23 @@ export default function App() {
           <thead>
             <tr>
               <th style={styles.thGoal}></th>
-              {DAY_LABELS.map((day, i) => (
-                <th 
-                  key={i} 
-                  style={{
-                    ...styles.thDay,
-                    color: weekDates[i] === today ? '#222' : '#bbb'
-                  }}
-                >
-                  <div>{day}</div>
-                  <div style={styles.thDate}>{formatDayDate(weekDates[i])}</div>
-                </th>
-              ))}
+              {DAY_LABELS.map((day, i) => {
+                const isToday = weekDates[i] === today;
+                return (
+                  <th 
+                    key={i} 
+                    style={styles.thDay}
+                  >
+                    <div style={{ color: isToday ? '#000' : '#333' }}>{day}</div>
+                    <div style={{ 
+                      ...styles.thDate, 
+                      color: isToday ? '#666' : '#aaa' 
+                    }}>
+                      {formatDayDate(weekDates[i])}
+                    </div>
+                  </th>
+                );
+              })}
               <th style={styles.thPct}></th>
             </tr>
           </thead>
@@ -689,15 +694,17 @@ const styles = {
   },
   thDay: {
     textAlign: 'center',
-    padding: '6px 4px',
-    fontWeight: '500',
-    fontSize: '11px',
-    width: '40px',
+    padding: '8px 4px',
+    fontWeight: '600',
+    fontSize: '14px',
+    width: '44px',
+    color: '#222',
   },
   thDate: {
-    fontSize: '9px',
+    fontSize: '11px',
     fontWeight: '400',
     marginTop: '2px',
+    color: '#999',
   },
   thPct: {
     textAlign: 'right',
