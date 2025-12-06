@@ -390,14 +390,12 @@ const getStyles = (theme) => ({
     alignItems: 'center',
     marginBottom: '16px',
   },
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-  },
-  darkModeLabel: {
-    fontSize: '12px',
-    color: theme.textFaint,
+  darkModeBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: '18px',
+    cursor: 'pointer',
+    padding: '4px',
   },
   title: {
     fontSize: '18px',
@@ -1339,21 +1337,13 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
-        <div style={styles.headerRight}>
-          <span style={styles.darkModeLabel}>Dark Mode</span>
-          <div 
-            onClick={handleToggleDarkMode}
-            style={{
-              ...styles.toggleSwitch,
-              ...(darkMode ? styles.toggleSwitchOn : styles.toggleSwitchOff),
-            }}
-          >
-            <div style={{
-              ...styles.toggleKnob,
-              ...(darkMode ? styles.toggleKnobOn : styles.toggleKnobOff),
-            }} />
-          </div>
-        </div>
+        <button 
+          onClick={handleToggleDarkMode}
+          style={styles.darkModeBtn}
+          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {darkMode ? '☀️' : '🌙'}
+        </button>
       </div>
 
       {/* Milestones Bar */}
