@@ -887,7 +887,6 @@ const styles = {
     color: '#666',
     cursor: 'pointer',
     outline: 'none',
-    maxWidth: '120px',
   },
   milestonesBar: {
     display: 'flex',
@@ -1012,7 +1011,7 @@ const styles = {
     padding: '8px 4px',
     fontWeight: '500',
     color: '#bbb',
-    minWidth: '120px',
+    minWidth: '140px',
   },
   thDay: {
     textAlign: 'center',
