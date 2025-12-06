@@ -84,6 +84,10 @@ const daysBetween = (date1, date2) => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
+const weeksBetween = (date1, date2) => {
+  return Math.floor(daysBetween(date1, date2) / 7);
+};
+
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ============================================
@@ -94,6 +98,7 @@ const useGoals = () => {
   const [goals, setGoals] = useState([]);
   const [entries, setEntries] = useState({});
   const [milestones, setMilestones] = useState([]);
+  const [settings, setSettings] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -121,15 +126,29 @@ const useGoals = () => {
         if (milestonesError) {
           console.error('Milestones error:', milestonesError);
         }
+
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('settings')
+          .select('*');
+        
+        if (settingsError) {
+          console.error('Settings error:', settingsError);
+        }
         
         const entriesMap = {};
         entriesData?.forEach(entry => {
           entriesMap[`${entry.goal_id}-${entry.date}`] = entry.achieved;
         });
+
+        const settingsMap = {};
+        settingsData?.forEach(s => {
+          settingsMap[s.key] = s.value;
+        });
         
         setGoals(goalsData || []);
         setEntries(entriesMap);
         setMilestones(milestonesData || []);
+        setSettings(settingsMap);
       } catch (err) {
         console.error('Error loading data:', err);
       }
@@ -239,7 +258,6 @@ const useGoals = () => {
   const saveMilestone = useCallback(async (milestoneData, existingId = null) => {
     try {
       if (existingId) {
-        // Update existing
         const { data, error } = await supabase
           .from('milestone')
           .update(milestoneData)
@@ -250,7 +268,6 @@ const useGoals = () => {
         if (error) throw error;
         setMilestones(prev => prev.map(m => m.id === existingId ? data : m));
       } else {
-        // Insert new
         const { data, error } = await supabase
           .from('milestone')
           .insert(milestoneData)
@@ -283,10 +300,24 @@ const useGoals = () => {
     }
   }, []);
 
+  const saveSetting = useCallback(async (key, value) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+    
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error saving setting:', err);
+    }
+  }, []);
+
   return { 
-    goals, entries, milestones, isLoaded, 
+    goals, entries, milestones, settings, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveMilestone, deleteMilestone 
+    saveMilestone, deleteMilestone, saveSetting
   };
 };
 
@@ -388,22 +419,18 @@ function MilestoneBadge({ milestone, goals, entries, onEdit }) {
     
     const days = daysBetween(today, milestone.target_date);
     
-    // Calculate by complete weeks for accurate comparison
     const startWeek = getWeekStart(milestone.start_date);
     const currentWeek = getWeekStart(today);
     
-    // Count complete weeks from start to current week
     const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
     
     let totalExpected = 0;
     let totalAchieved = 0;
     
-    // For each goal, calculate expected vs achieved per complete week
     goals.forEach(goal => {
       const target = goal.target || 7;
       totalExpected += target * weeksCount;
       
-      // Count achievements from start date to today
       let currentDate = new Date(milestone.start_date);
       const endDate = new Date(today);
       
@@ -533,14 +560,56 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose }) {
 }
 
 // ============================================
+// SETTINGS MODAL
+// ============================================
+
+function SettingsModal({ settings, onSave, onClose }) {
+  const [trackingStartDate, setTrackingStartDate] = useState(
+    settings.tracking_start_date || getToday()
+  );
+
+  const handleSave = () => {
+    onSave('tracking_start_date', trackingStartDate);
+    onClose();
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>Settings</h3>
+        
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Tracking Start Date</label>
+          <p style={styles.modalHint}>
+            Only weeks from this date forward will appear in the week dropdown.
+          </p>
+          <input
+            type="date"
+            value={trackingStartDate}
+            onChange={e => setTrackingStartDate(e.target.value)}
+            style={styles.modalInput}
+          />
+        </div>
+        
+        <div style={styles.modalActions}>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={styles.modalCancelBtn}>Cancel</button>
+          <button onClick={handleSave} style={styles.modalSaveBtn}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 
 export default function App() {
   const { 
-    goals, entries, milestones, isLoaded, 
+    goals, entries, milestones, settings, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveMilestone, deleteMilestone 
+    saveMilestone, deleteMilestone, saveSetting
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -549,9 +618,11 @@ export default function App() {
   const [showPerformance, setShowPerformance] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState(null);
   const [showMilestoneEditor, setShowMilestoneEditor] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
+  const trackingStartDate = settings.tracking_start_date || getToday();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -575,8 +646,13 @@ export default function App() {
     if (goals.length === 0) return [];
     
     const weeks = [];
-    for (let i = 0; i >= -12; i--) {
+    for (let i = 0; i >= -52; i--) {
       const dates = getWeekDates(i);
+      const weekStart = dates[0];
+      
+      // Stop if we've gone before tracking start date
+      if (weekStart < trackingStartDate) break;
+      
       const hasData = goals.some(goal => 
         dates.some(date => entries[`${goal.id}-${date}`])
       );
@@ -587,18 +663,20 @@ export default function App() {
       }
     }
     return weeks.reverse();
-  }, [goals, entries]);
+  }, [goals, entries, trackingStartDate]);
 
   const weekOptions = useMemo(() => {
     const options = [];
-    for (let i = 0; i >= -12; i--) {
+    const maxWeeksBack = weeksBetween(trackingStartDate, getToday());
+    
+    for (let i = 0; i >= -maxWeeksBack; i--) {
       const dates = getWeekDates(i);
       const start = formatShortDate(dates[0]);
       const end = formatShortDate(dates[6]);
       options.push({ offset: i, label: `${start} – ${end}${i === 0 ? ' (now)' : ''}` });
     }
     return options;
-  }, []);
+  }, [trackingStartDate]);
 
   const handleAddGoal = () => {
     if (newGoal.trim()) {
@@ -637,6 +715,13 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
+        <button 
+          onClick={() => setShowSettings(true)} 
+          style={styles.settingsBtn}
+          title="Settings"
+        >
+          ⚙️
+        </button>
       </div>
 
       {/* Milestones Bar */}
@@ -836,6 +921,15 @@ export default function App() {
           onClose={() => setShowMilestoneEditor(false)}
         />
       )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal
+          settings={settings}
+          onSave={saveSetting}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }
@@ -867,6 +961,15 @@ const styles = {
     fontWeight: '600',
     color: '#111',
     margin: 0,
+  },
+  settingsBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: '18px',
+    cursor: 'pointer',
+    padding: '4px',
+    opacity: 0.6,
+    transition: 'opacity 0.15s',
   },
   weekSelect: {
     padding: '6px 10px',
@@ -1169,6 +1272,11 @@ const styles = {
     color: '#666',
     marginBottom: '6px',
     fontWeight: '500',
+  },
+  modalHint: {
+    fontSize: '11px',
+    color: '#999',
+    margin: '0 0 8px 0',
   },
   modalInput: {
     width: '100%',
