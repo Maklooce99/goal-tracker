@@ -730,6 +730,7 @@ const styles = {
   goalText: {
     color: '#333',
     flex: 1,
+    whiteSpace: 'nowrap',
   },
   deleteBtn: {
     background: 'none',
