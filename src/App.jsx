@@ -1,5 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ============================================
 // SUPABASE CLIENT
@@ -65,6 +81,7 @@ const useGoals = () => {
         const { data: goalsData, error: goalsError } = await supabase
           .from('goals')
           .select('*')
+          .order('sort_order', { ascending: true, nullsFirst: false })
           .order('created_at', { ascending: true });
         
         if (goalsError) throw goalsError;
@@ -96,9 +113,13 @@ const useGoals = () => {
   const addGoal = useCallback(async (name, target = 7) => {
     if (!name?.trim()) return;
     
+    // Get max sort_order
+    const maxOrder = goals.reduce((max, g) => Math.max(max, g.sort_order || 0), 0);
+    
     const newGoal = {
       name: name.trim(),
-      target: Math.min(7, Math.max(1, target))
+      target: Math.min(7, Math.max(1, target)),
+      sort_order: maxOrder + 1
     };
     
     try {
@@ -113,7 +134,7 @@ const useGoals = () => {
     } catch (err) {
       console.error('Error adding goal:', err);
     }
-  }, []);
+  }, [goals]);
 
   const deleteGoal = useCallback(async (id) => {
     try {
@@ -134,6 +155,30 @@ const useGoals = () => {
       });
     } catch (err) {
       console.error('Error deleting goal:', err);
+    }
+  }, []);
+
+  const reorderGoals = useCallback(async (newGoals) => {
+    // Optimistic update
+    setGoals(newGoals);
+    
+    // Update sort_order in database
+    try {
+      const updates = newGoals.map((goal, index) => ({
+        id: goal.id,
+        name: goal.name,
+        target: goal.target,
+        sort_order: index,
+        created_at: goal.created_at
+      }));
+      
+      const { error } = await supabase
+        .from('goals')
+        .upsert(updates);
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error reordering goals:', err);
     }
   }, []);
 
@@ -169,21 +214,113 @@ const useGoals = () => {
     }
   }, [entries]);
 
-  return { goals, entries, isLoaded, addGoal, deleteGoal, toggleEntry };
+  return { goals, entries, isLoaded, addGoal, deleteGoal, toggleEntry, reorderGoals };
 };
+
+// ============================================
+// SORTABLE ROW COMPONENT
+// ============================================
+
+function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: goal.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
+  const target = goal.target || 7;
+  const pct = Math.round((achieved / target) * 100);
+
+  return (
+    <tr ref={setNodeRef} style={style} {...attributes}>
+      <td style={styles.tdGoal}>
+        <span {...listeners} style={styles.dragHandle}>⋮⋮</span>
+        <span style={styles.goalText}>{goal.name}</span>
+        <span style={{
+          ...styles.score,
+          color: achieved >= target ? '#16a34a' : '#999'
+        }}>{achieved}/{target}</span>
+        <button 
+          onClick={() => deleteGoal(goal.id)} 
+          style={styles.deleteBtn}
+        >
+          ×
+        </button>
+      </td>
+      {weekDates.map((date, i) => {
+        const isChecked = entries[`${goal.id}-${date}`];
+        const isToday = date === today;
+        return (
+          <td 
+            key={date} 
+            style={{
+              ...styles.tdDay,
+              background: isToday ? '#f0f0f0' : 'transparent'
+            }}
+          >
+            <div
+              onClick={() => toggleEntry(goal.id, date)}
+              style={{
+                ...styles.checkbox,
+                background: isChecked ? '#222' : '#fff',
+                borderColor: isChecked ? '#222' : '#ddd'
+              }}
+            >
+              {isChecked && <span style={styles.check}>✓</span>}
+            </div>
+          </td>
+        );
+      })}
+      <td style={{
+        ...styles.tdPct,
+        color: pct >= 100 ? '#16a34a' : pct >= 50 ? '#666' : '#999'
+      }}>
+        {pct}%
+      </td>
+    </tr>
+  );
+}
 
 // ============================================
 // MAIN APP
 // ============================================
 
 export default function App() {
-  const { goals, entries, isLoaded, addGoal, deleteGoal, toggleEntry } = useGoals();
+  const { goals, entries, isLoaded, addGoal, deleteGoal, toggleEntry, reorderGoals } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
   const [weekOffset, setWeekOffset] = useState(0);
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    
+    if (active.id !== over.id) {
+      const oldIndex = goals.findIndex(g => g.id === active.id);
+      const newIndex = goals.findIndex(g => g.id === over.id);
+      const newGoals = arrayMove(goals, oldIndex, newIndex);
+      reorderGoals(newGoals);
+    }
+  };
 
   // Calculate weeks that have data for performance table
   const weeksWithData = useMemo(() => {
@@ -311,58 +448,28 @@ export default function App() {
                 </td>
               </tr>
             ) : (
-              goals.map(goal => {
-                const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
-                const target = goal.target || 7;
-                const pct = Math.round((achieved / target) * 100);
-                return (
-                  <tr key={goal.id} style={styles.row}>
-                    <td style={styles.tdGoal}>
-                      <span style={styles.goalText}>{goal.name}</span>
-                      <span style={{
-                        ...styles.score,
-                        color: achieved >= target ? '#16a34a' : '#999'
-                      }}>{achieved}/{target}</span>
-                      <button 
-                        onClick={() => deleteGoal(goal.id)} 
-                        style={styles.deleteBtn}
-                      >
-                        ×
-                      </button>
-                    </td>
-                    {weekDates.map((date, i) => {
-                      const isChecked = entries[`${goal.id}-${date}`];
-                      const isToday = date === today;
-                      return (
-                        <td 
-                          key={date} 
-                          style={{
-                            ...styles.tdDay,
-                            background: isToday ? '#f0f0f0' : 'transparent'
-                          }}
-                        >
-                          <div
-                            onClick={() => toggleEntry(goal.id, date)}
-                            style={{
-                              ...styles.checkbox,
-                              background: isChecked ? '#222' : '#fff',
-                              borderColor: isChecked ? '#222' : '#ddd'
-                            }}
-                          >
-                            {isChecked && <span style={styles.check}>✓</span>}
-                          </div>
-                        </td>
-                      );
-                    })}
-                    <td style={{
-                      ...styles.tdPct,
-                      color: pct >= 100 ? '#16a34a' : pct >= 50 ? '#666' : '#999'
-                    }}>
-                      {pct}%
-                    </td>
-                  </tr>
-                );
-              })
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={goals.map(g => g.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {goals.map(goal => (
+                    <SortableRow
+                      key={goal.id}
+                      goal={goal}
+                      weekDates={weekDates}
+                      today={today}
+                      entries={entries}
+                      toggleEntry={toggleEntry}
+                      deleteGoal={deleteGoal}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
             )}
           </tbody>
         </table>
@@ -508,20 +615,27 @@ const styles = {
   tdGoal: {
     padding: '12px',
     position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  dragHandle: {
+    cursor: 'grab',
+    color: '#ccc',
+    fontSize: '14px',
+    userSelect: 'none',
+    padding: '4px',
   },
   goalText: {
     color: '#222',
   },
   score: {
-    marginLeft: '8px',
+    marginLeft: '4px',
     color: '#999',
     fontSize: '12px',
   },
   deleteBtn: {
-    position: 'absolute',
-    right: '8px',
-    top: '50%',
-    transform: 'translateY(-50%)',
+    marginLeft: 'auto',
     background: 'none',
     border: 'none',
     color: '#ccc',
