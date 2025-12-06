@@ -426,45 +426,84 @@ const getStyles = (theme) => ({
     cursor: 'pointer',
     outline: 'none',
   },
-  milestonesBar: {
+  milestonesSection: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-    marginBottom: '16px',
+    flexDirection: 'column',
+    gap: '10px',
+    marginBottom: '20px',
   },
-  milestoneBadge: {
+  milestoneCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '14px 16px',
+    background: theme.bgSecondary,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '10px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    width: '100%',
+    boxSizing: 'border-box',
+  },
+  milestoneCardHeader: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '6px 12px',
-    background: theme.bgSecondary,
-    border: `1px solid ${theme.border}`,
-    borderRadius: '6px',
-    fontSize: '12px',
-    cursor: 'pointer',
   },
-  milestoneName: {
-    color: theme.textSecondary,
-    fontWeight: '500',
-    marginRight: '4px',
+  milestoneIcon: {
+    fontSize: '16px',
   },
-  milestoneDays: {
-    color: theme.textMuted,
-  },
-  milestoneDivider: {
-    color: theme.border,
-  },
-  milestonePct: {
+  milestoneCardName: {
+    fontSize: '15px',
     fontWeight: '600',
+    color: theme.text,
+  },
+  milestoneCardBody: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+  },
+  milestoneCardDays: {
+    fontSize: '13px',
+    color: theme.textMuted,
+    whiteSpace: 'nowrap',
+  },
+  milestoneProgressContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  milestoneProgressTrack: {
+    flex: 1,
+    maxWidth: '120px',
+    height: '6px',
+    background: theme.border,
+    borderRadius: '3px',
+    overflow: 'hidden',
+  },
+  milestoneProgressBar: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease',
+  },
+  milestoneCardPct: {
+    fontSize: '14px',
+    fontWeight: '600',
+    minWidth: '40px',
+    textAlign: 'right',
   },
   addMilestoneBtn: {
-    padding: '6px 12px',
+    padding: '12px 16px',
     background: 'transparent',
     border: `1px dashed ${theme.borderDashed}`,
-    borderRadius: '6px',
-    fontSize: '12px',
+    borderRadius: '10px',
+    fontSize: '13px',
     color: theme.textFaint,
     cursor: 'pointer',
+    width: '100%',
   },
   addGoalBtn: {
     padding: '8px 14px',
@@ -955,10 +994,10 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
 }
 
 // ============================================
-// MILESTONE BADGE COMPONENT
+// MILESTONE CARD COMPONENT
 // ============================================
 
-function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme, thresholds }) {
+function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thresholds }) {
   const today = getToday();
   
   const { daysRemaining, overallPct } = useMemo(() => {
@@ -1001,28 +1040,43 @@ function MilestoneBadge({ milestone, goals, entries, onEdit, styles, theme, thre
     return theme.danger;
   };
 
+  const statusColor = getPctColor(overallPct);
+
   return (
-    <button onClick={() => onEdit(milestone)} style={styles.milestoneBadge}>
-      <span style={styles.milestoneName}>{milestone.name}</span>
-      <span style={styles.milestoneDays}>{daysRemaining}d</span>
-      <span style={styles.milestoneDivider}>|</span>
-      <span style={{
-        ...styles.milestonePct,
-        color: getPctColor(overallPct)
-      }}>{overallPct}%</span>
+    <button onClick={() => onEdit(milestone)} style={styles.milestoneCard}>
+      <div style={styles.milestoneCardHeader}>
+        <span style={styles.milestoneIcon}>🎯</span>
+        <span style={styles.milestoneCardName}>{milestone.name}</span>
+      </div>
+      <div style={styles.milestoneCardBody}>
+        <span style={styles.milestoneCardDays}>{daysRemaining} days left</span>
+        <div style={styles.milestoneProgressContainer}>
+          <div style={styles.milestoneProgressTrack}>
+            <div style={{
+              ...styles.milestoneProgressBar,
+              width: `${Math.min(100, overallPct)}%`,
+              background: statusColor,
+            }} />
+          </div>
+          <span style={{
+            ...styles.milestoneCardPct,
+            color: statusColor,
+          }}>{overallPct}%</span>
+        </div>
+      </div>
     </button>
   );
 }
 
 // ============================================
-// MILESTONES BAR COMPONENT
+// MILESTONES SECTION COMPONENT
 // ============================================
 
-function MilestonesBar({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds }) {
+function MilestonesSection({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds }) {
   return (
-    <div style={styles.milestonesBar}>
+    <div style={styles.milestonesSection}>
       {milestones.map(milestone => (
-        <MilestoneBadge
+        <MilestoneCard
           key={milestone.id}
           milestone={milestone}
           goals={goals}
@@ -1034,7 +1088,7 @@ function MilestonesBar({ milestones, goals, entries, onEdit, onAdd, styles, them
         />
       ))}
       <button onClick={onAdd} style={styles.addMilestoneBtn}>
-        + Milestone
+        + Add Milestone
       </button>
     </div>
   );
@@ -1346,8 +1400,8 @@ export default function App() {
         </button>
       </div>
 
-      {/* Milestones Bar */}
-      <MilestonesBar
+      {/* Milestones Section */}
+      <MilestonesSection
         milestones={milestones}
         goals={goals}
         entries={entries}
