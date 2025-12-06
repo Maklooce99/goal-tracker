@@ -715,13 +715,6 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
-        <button 
-          onClick={() => setShowSettings(true)} 
-          style={styles.settingsBtn}
-          title="Settings"
-        >
-          ⚙️
-        </button>
       </div>
 
       {/* Milestones Bar */}
@@ -912,6 +905,16 @@ export default function App() {
         </div>
       )}
 
+      {/* Settings Link */}
+      <div style={styles.settingsSection}>
+        <button 
+          onClick={() => setShowSettings(true)} 
+          style={styles.settingsBtn}
+        >
+          ⚙️ Settings
+        </button>
+      </div>
+
       {/* Milestone Editor Modal */}
       {showMilestoneEditor && (
         <MilestoneEditor
@@ -962,14 +965,18 @@ const styles = {
     color: '#111',
     margin: 0,
   },
+  settingsSection: {
+    marginTop: '32px',
+    paddingTop: '16px',
+    borderTop: '1px solid #f0f0f0',
+  },
   settingsBtn: {
     background: 'none',
     border: 'none',
-    fontSize: '18px',
+    fontSize: '12px',
+    color: '#999',
     cursor: 'pointer',
-    padding: '4px',
-    opacity: 0.6,
-    transition: 'opacity 0.15s',
+    padding: '4px 0',
   },
   weekSelect: {
     padding: '6px 10px',
