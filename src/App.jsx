@@ -637,15 +637,6 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Goals</h1>
-        <select 
-          value={weekOffset} 
-          onChange={(e) => setWeekOffset(parseInt(e.target.value))}
-          style={styles.weekSelect}
-        >
-          {weekOptions.map(opt => (
-            <option key={opt.offset} value={opt.offset}>{opt.label}</option>
-          ))}
-        </select>
       </div>
 
       {/* Milestones Bar */}
@@ -705,7 +696,17 @@ export default function App() {
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.thGoal}></th>
+              <th style={styles.thGoal}>
+                <select 
+                  value={weekOffset} 
+                  onChange={(e) => setWeekOffset(parseInt(e.target.value))}
+                  style={styles.weekSelectInline}
+                >
+                  {weekOptions.map(opt => (
+                    <option key={opt.offset} value={opt.offset}>{opt.label}</option>
+                  ))}
+                </select>
+              </th>
               {DAY_LABELS.map((day, i) => {
                 const isToday = weekDates[i] === today;
                 return (
@@ -876,6 +877,17 @@ const styles = {
     color: '#666',
     cursor: 'pointer',
     outline: 'none',
+  },
+  weekSelectInline: {
+    padding: '4px 6px',
+    fontSize: '11px',
+    border: '1px solid #e5e5e5',
+    borderRadius: '4px',
+    background: '#fff',
+    color: '#666',
+    cursor: 'pointer',
+    outline: 'none',
+    maxWidth: '120px',
   },
   milestonesBar: {
     display: 'flex',
