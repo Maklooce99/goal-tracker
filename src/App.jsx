@@ -427,10 +427,20 @@ const getStyles = (theme) => ({
     outline: 'none',
   },
   milestonesSection: {
+    marginBottom: '20px',
+  },
+  milestonesHeader: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginBottom: '10px',
+  },
+  milestonesList: {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
-    marginBottom: '20px',
   },
   milestoneCard: {
     display: 'flex',
@@ -444,6 +454,7 @@ const getStyles = (theme) => ({
     textAlign: 'left',
     width: '100%',
     boxSizing: 'border-box',
+    borderLeft: '4px solid',
   },
   milestoneIcon: {
     fontSize: '16px',
@@ -486,6 +497,7 @@ const getStyles = (theme) => ({
     color: theme.textFaint,
     cursor: 'pointer',
     width: '100%',
+    marginTop: '10px',
   },
   addGoalBtn: {
     padding: '8px 14px',
@@ -1031,7 +1043,10 @@ function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thres
   const statusColor = getPctColor(overallPct);
 
   return (
-    <button onClick={() => onEdit(milestone)} style={styles.milestoneCard}>
+    <button onClick={() => onEdit(milestone)} style={{
+      ...styles.milestoneCard,
+      borderLeftColor: statusColor,
+    }}>
       <span style={styles.milestoneIcon}>🎯</span>
       <span style={styles.milestoneCardName}>{milestone.name}</span>
       <span style={styles.milestoneCardDays}>{daysRemaining}d</span>
@@ -1057,19 +1072,22 @@ function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thres
 function MilestonesSection({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds, milestoneColors }) {
   return (
     <div style={styles.milestonesSection}>
-      {milestones.map(milestone => (
-        <MilestoneCard
-          key={milestone.id}
-          milestone={milestone}
-          goals={goals}
-          entries={entries}
-          onEdit={onEdit}
-          styles={styles}
-          theme={theme}
-          thresholds={thresholds}
-          milestoneColors={milestoneColors}
-        />
-      ))}
+      <div style={styles.milestonesHeader}>Milestones</div>
+      <div style={styles.milestonesList}>
+        {milestones.map(milestone => (
+          <MilestoneCard
+            key={milestone.id}
+            milestone={milestone}
+            goals={goals}
+            entries={entries}
+            onEdit={onEdit}
+            styles={styles}
+            theme={theme}
+            thresholds={thresholds}
+            milestoneColors={milestoneColors}
+          />
+        ))}
+      </div>
       <button onClick={onAdd} style={styles.addMilestoneBtn}>
         + Add Milestone
       </button>
