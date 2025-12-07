@@ -142,6 +142,7 @@ const useGoals = () => {
   const [goals, setGoals] = useState([]);
   const [entries, setEntries] = useState({});
   const [milestones, setMilestones] = useState([]);
+  const [objectives, setObjectives] = useState([]);
   const [settings, setSettings] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -178,6 +179,16 @@ const useGoals = () => {
         if (settingsError) {
           console.error('Settings error:', settingsError);
         }
+
+        const { data: objectivesData, error: objectivesError } = await supabase
+          .from('objective')
+          .select('*')
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: true });
+        
+        if (objectivesError) {
+          console.error('Objectives error:', objectivesError);
+        }
         
         const entriesMap = {};
         entriesData?.forEach(entry => {
@@ -192,6 +203,7 @@ const useGoals = () => {
         setGoals(goalsData || []);
         setEntries(entriesMap);
         setMilestones(milestonesData || []);
+        setObjectives(objectivesData || []);
         setSettings(settingsMap);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -202,7 +214,7 @@ const useGoals = () => {
     loadData();
   }, []);
 
-  const addGoal = useCallback(async (name, target = 7) => {
+  const addGoal = useCallback(async (name, target = 7, objectiveId = null) => {
     if (!name?.trim()) return;
     
     const maxOrder = goals.reduce((max, g) => Math.max(max, g.sort_order || 0), 0);
@@ -210,7 +222,8 @@ const useGoals = () => {
     const newGoal = {
       name: name.trim(),
       target: Math.min(7, Math.max(1, target)),
-      sort_order: maxOrder + 1
+      sort_order: maxOrder + 1,
+      objective_id: objectiveId
     };
     
     try {
@@ -258,6 +271,7 @@ const useGoals = () => {
         name: goal.name,
         target: goal.target,
         sort_order: index,
+        objective_id: goal.objective_id,
         created_at: goal.created_at
       }));
       
@@ -358,10 +372,81 @@ const useGoals = () => {
     }
   }, []);
 
+  const saveObjective = useCallback(async (objectiveData, existingId = null) => {
+    try {
+      if (existingId) {
+        const { data, error } = await supabase
+          .from('objective')
+          .update(objectiveData)
+          .eq('id', existingId)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        setObjectives(prev => prev.map(o => o.id === existingId ? data : o));
+      } else {
+        const maxOrder = objectives.reduce((max, o) => Math.max(max, o.sort_order || 0), 0);
+        const { data, error } = await supabase
+          .from('objective')
+          .insert({ ...objectiveData, sort_order: maxOrder + 1 })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        setObjectives(prev => [...prev, data]);
+      }
+    } catch (err) {
+      console.error('Error saving objective:', err);
+    }
+  }, [objectives]);
+
+  const deleteObjective = useCallback(async (id) => {
+    if (!id) return;
+    
+    try {
+      // First, unlink all goals from this objective
+      const { error: unlinkError } = await supabase
+        .from('goals')
+        .update({ objective_id: null })
+        .eq('objective_id', id);
+      
+      if (unlinkError) throw unlinkError;
+      
+      // Update local goals state
+      setGoals(prev => prev.map(g => g.objective_id === id ? { ...g, objective_id: null } : g));
+      
+      // Then delete the objective
+      const { error } = await supabase
+        .from('objective')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      setObjectives(prev => prev.filter(o => o.id !== id));
+    } catch (err) {
+      console.error('Error deleting objective:', err);
+    }
+  }, []);
+
+  const updateGoalObjective = useCallback(async (goalId, objectiveId) => {
+    try {
+      const { error } = await supabase
+        .from('goals')
+        .update({ objective_id: objectiveId })
+        .eq('id', goalId);
+      
+      if (error) throw error;
+      setGoals(prev => prev.map(g => g.id === goalId ? { ...g, objective_id: objectiveId } : g));
+    } catch (err) {
+      console.error('Error updating goal objective:', err);
+    }
+  }, []);
+
   return { 
-    goals, entries, milestones, settings, isLoaded, 
+    goals, entries, milestones, objectives, settings, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveMilestone, deleteMilestone, saveSetting
+    saveMilestone, deleteMilestone, saveSetting,
+    saveObjective, deleteObjective, updateGoalObjective
   };
 };
 
@@ -507,6 +592,57 @@ const getStyles = (theme) => ({
     minWidth: '36px',
     textAlign: 'right',
   },
+  objectivesSection: {
+    marginBottom: '20px',
+  },
+  objectivesList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  objectiveCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px 14px',
+    background: theme.bgSecondary,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '8px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    width: '100%',
+    boxSizing: 'border-box',
+  },
+  objectiveIcon: {
+    fontSize: '14px',
+    color: theme.textMuted,
+  },
+  objectiveName: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: theme.text,
+    flex: 1,
+  },
+  objectiveGoalCount: {
+    fontSize: '11px',
+    color: theme.textFaint,
+  },
+  objectivePct: {
+    fontSize: '12px',
+    fontWeight: '600',
+    minWidth: '32px',
+    textAlign: 'right',
+  },
+  objectiveSelect: {
+    padding: '7px 10px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    fontSize: '13px',
+    background: theme.bg,
+    color: theme.text,
+    outline: 'none',
+    minWidth: '120px',
+  },
   goalsSection: {
     marginBottom: '0',
   },
@@ -644,6 +780,11 @@ const getStyles = (theme) => ({
     color: theme.textSecondary,
     flex: 1,
     whiteSpace: 'nowrap',
+  },
+  goalTarget: {
+    color: theme.textFaint,
+    fontSize: '11px',
+    marginLeft: '4px',
   },
   deleteBtn: {
     background: 'none',
@@ -951,7 +1092,10 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
         >
           ⋮⋮
         </span>
-        <span style={styles.goalText}>{goal.name}</span>
+        <span style={styles.goalText}>
+          {goal.name}
+          <span style={styles.goalTarget}>({target}x)</span>
+        </span>
         <button 
           onClick={() => deleteGoal(goal.id)} 
           style={{
@@ -1173,6 +1317,53 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose, styles }) {
 }
 
 // ============================================
+// OBJECTIVE EDITOR MODAL
+// ============================================
+
+function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
+  const [name, setName] = useState(objective?.name || '');
+
+  const handleSave = () => {
+    if (!name.trim()) return;
+    onSave({ name: name.trim() }, objective?.id);
+    onClose();
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>
+          {objective ? 'Edit Objective' : 'Add Objective'}
+        </h3>
+        
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Be a better parent"
+            style={styles.modalInput}
+            autoFocus
+          />
+        </div>
+        
+        <div style={styles.modalActions}>
+          {objective && (
+            <button onClick={() => { onDelete(objective.id); onClose(); }} style={styles.modalDeleteBtn}>
+              Delete
+            </button>
+          )}
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={styles.modalCancelBtn}>Cancel</button>
+          <button onClick={handleSave} style={styles.modalSaveBtn}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS MODAL
 // ============================================
 
@@ -1295,17 +1486,21 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 
 export default function App() {
   const { 
-    goals, entries, milestones, settings, isLoaded, 
+    goals, entries, milestones, objectives, settings, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveMilestone, deleteMilestone, saveSetting
+    saveMilestone, deleteMilestone, saveSetting,
+    saveObjective, deleteObjective, updateGoalObjective
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
+  const [newObjectiveId, setNewObjectiveId] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPerformance, setShowPerformance] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState(null);
   const [showMilestoneEditor, setShowMilestoneEditor] = useState(false);
+  const [editingObjective, setEditingObjective] = useState(null);
+  const [showObjectiveEditor, setShowObjectiveEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
   const darkMode = settings.dark_mode === 'true';
@@ -1378,9 +1573,10 @@ export default function App() {
 
   const handleAddGoal = () => {
     if (newGoal.trim()) {
-      addGoal(newGoal, newTarget);
+      addGoal(newGoal, newTarget, newObjectiveId);
       setNewGoal('');
       setNewTarget(7);
+      setNewObjectiveId(null);
       setShowAddForm(false);
     }
   };
@@ -1388,6 +1584,7 @@ export default function App() {
   const handleCancelAdd = () => {
     setNewGoal('');
     setNewTarget(7);
+    setNewObjectiveId(null);
     setShowAddForm(false);
   };
 
@@ -1404,6 +1601,16 @@ export default function App() {
   const handleAddMilestone = () => {
     setEditingMilestone(null);
     setShowMilestoneEditor(true);
+  };
+
+  const handleEditObjective = (objective) => {
+    setEditingObjective(objective);
+    setShowObjectiveEditor(true);
+  };
+
+  const handleAddObjective = () => {
+    setEditingObjective(null);
+    setShowObjectiveEditor(true);
   };
 
   const handleToggleDarkMode = () => {
@@ -1445,6 +1652,40 @@ export default function App() {
         milestoneColors={milestoneColors}
       />
 
+      {/* Objectives Section */}
+      <div style={styles.objectivesSection}>
+        <div style={styles.sectionHeader}>
+          <span style={styles.sectionTitle}>Objectives</span>
+          <button onClick={handleAddObjective} style={styles.sectionAddBtn}>+</button>
+        </div>
+        {objectives.length > 0 && (
+          <div style={styles.objectivesList}>
+            {objectives.map(objective => {
+              const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
+              const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
+              const totalAchieved = objectiveGoals.reduce((sum, g) => {
+                return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
+              }, 0);
+              const pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
+              const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
+              
+              return (
+                <button 
+                  key={objective.id} 
+                  onClick={() => handleEditObjective(objective)}
+                  style={styles.objectiveCard}
+                >
+                  <span style={styles.objectiveIcon}>◎</span>
+                  <span style={styles.objectiveName}>{objective.name}</span>
+                  <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
+                  <span style={{ ...styles.objectivePct, color: pctColor }}>{pct}%</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Goals Section */}
       <div style={styles.goalsSection}>
         <div style={styles.sectionHeader}>
@@ -1485,6 +1726,21 @@ export default function App() {
                 ))}
               </div>
             </div>
+            {objectives.length > 0 && (
+              <div style={styles.addField}>
+                <label style={styles.addLabel}>Objective (optional)</label>
+                <select
+                  value={newObjectiveId || ''}
+                  onChange={(e) => setNewObjectiveId(e.target.value || null)}
+                  style={styles.objectiveSelect}
+                >
+                  <option value="">None</option>
+                  {objectives.map(obj => (
+                    <option key={obj.id} value={obj.id}>{obj.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
             <button onClick={handleCancelAdd} style={styles.cancelBtn}>×</button>
           </div>
@@ -1653,6 +1909,17 @@ export default function App() {
           onSave={saveMilestone}
           onDelete={deleteMilestone}
           onClose={() => setShowMilestoneEditor(false)}
+          styles={styles}
+        />
+      )}
+
+      {/* Objective Editor Modal */}
+      {showObjectiveEditor && (
+        <ObjectiveEditor
+          objective={editingObjective}
+          onSave={saveObjective}
+          onDelete={deleteObjective}
+          onClose={() => setShowObjectiveEditor(false)}
           styles={styles}
         />
       )}
