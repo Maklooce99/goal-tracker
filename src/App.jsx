@@ -372,8 +372,10 @@ const useGoals = () => {
     }
   }, []);
 
-  const saveObjective = useCallback(async (objectiveData, existingId = null) => {
+  const saveObjective = useCallback(async (objectiveData, existingId = null, selectedGoalIds = []) => {
     try {
+      let objectiveId = existingId;
+      
       if (existingId) {
         const { data, error } = await supabase
           .from('objective')
@@ -394,7 +396,38 @@ const useGoals = () => {
         
         if (error) throw error;
         setObjectives(prev => [...prev, data]);
+        objectiveId = data.id;
       }
+
+      // Update goal assignments
+      // First, unassign all goals currently assigned to this objective
+      const { error: unassignError } = await supabase
+        .from('goals')
+        .update({ objective_id: null })
+        .eq('objective_id', objectiveId);
+      
+      if (unassignError) throw unassignError;
+
+      // Then assign selected goals to this objective
+      if (selectedGoalIds.length > 0) {
+        const { error: assignError } = await supabase
+          .from('goals')
+          .update({ objective_id: objectiveId })
+          .in('id', selectedGoalIds);
+        
+        if (assignError) throw assignError;
+      }
+
+      // Update local goals state
+      setGoals(prev => prev.map(g => {
+        if (selectedGoalIds.includes(g.id)) {
+          return { ...g, objective_id: objectiveId };
+        } else if (g.objective_id === objectiveId) {
+          return { ...g, objective_id: null };
+        }
+        return g;
+      }));
+
     } catch (err) {
       console.error('Error saving objective:', err);
     }
@@ -1009,6 +1042,46 @@ const getStyles = (theme) => ({
     color: theme.textMuted,
     border: `1px solid ${theme.border}`,
   },
+  goalChecklist: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    maxHeight: '200px',
+    overflowY: 'auto',
+  },
+  goalCheckItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '8px 10px',
+    background: theme.bgSecondary,
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
+  goalCheckbox: {
+    width: '18px',
+    height: '18px',
+    borderRadius: '4px',
+    border: '1px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  goalCheckmark: {
+    color: theme.bg,
+    fontSize: '11px',
+    fontWeight: '600',
+  },
+  goalCheckName: {
+    fontSize: '13px',
+    color: theme.text,
+    flex: 1,
+  },
+  goalCheckTarget: {
+    fontSize: '11px',
+    color: theme.textFaint,
+  },
   modalActions: {
     display: 'flex',
     gap: '10px',
@@ -1397,10 +1470,28 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose, styles }) {
 // OBJECTIVE EDITOR MODAL
 // ============================================
 
-function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
+function ObjectiveEditor({ objective, goals, onSave, onDelete, onClose, styles, theme }) {
   const [name, setName] = useState(objective?.name || '');
   const [startDate, setStartDate] = useState(objective?.start_date || '');
   const [targetDate, setTargetDate] = useState(objective?.target_date || '');
+  
+  // Track which goals are selected for this objective
+  const [selectedGoalIds, setSelectedGoalIds] = useState(() => {
+    if (!objective) return new Set();
+    return new Set(goals.filter(g => g.objective_id === objective.id).map(g => g.id));
+  });
+
+  const toggleGoal = (goalId) => {
+    setSelectedGoalIds(prev => {
+      const next = new Set(prev);
+      if (next.has(goalId)) {
+        next.delete(goalId);
+      } else {
+        next.add(goalId);
+      }
+      return next;
+    });
+  };
 
   const handleSave = () => {
     if (!name.trim()) return;
@@ -1408,7 +1499,7 @@ function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
       name: name.trim(),
       start_date: startDate || null,
       target_date: targetDate || null
-    }, objective?.id);
+    }, objective?.id, Array.from(selectedGoalIds));
     onClose();
   };
 
@@ -1457,6 +1548,38 @@ function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
             </div>
           </div>
         </div>
+
+        {goals.length > 0 && (
+          <div style={styles.modalField}>
+            <label style={styles.modalLabel}>Goals</label>
+            <div style={styles.goalChecklist}>
+              {goals.map(goal => {
+                const isSelected = selectedGoalIds.has(goal.id);
+                const belongsToOther = goal.objective_id && goal.objective_id !== objective?.id;
+                return (
+                  <div 
+                    key={goal.id} 
+                    onClick={() => toggleGoal(goal.id)}
+                    style={{
+                      ...styles.goalCheckItem,
+                      opacity: belongsToOther && !isSelected ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{
+                      ...styles.goalCheckbox,
+                      background: isSelected ? theme.checkboxChecked : theme.bgCheckbox,
+                      borderColor: isSelected ? theme.checkboxChecked : theme.checkboxBorder,
+                    }}>
+                      {isSelected && <span style={styles.goalCheckmark}>✓</span>}
+                    </div>
+                    <span style={styles.goalCheckName}>{goal.name}</span>
+                    <span style={styles.goalCheckTarget}>({goal.target}x)</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         
         <div style={styles.modalActions}>
           {objective && (
@@ -2102,10 +2225,12 @@ export default function App() {
       {showObjectiveEditor && (
         <ObjectiveEditor
           objective={editingObjective}
+          goals={goals}
           onSave={saveObjective}
           onDelete={deleteObjective}
           onClose={() => setShowObjectiveEditor(false)}
           styles={styles}
+          theme={theme}
         />
       )}
 
