@@ -71,6 +71,94 @@ const darkTheme = {
 };
 
 // ============================================
+// AI PLANNING CONFIGURATION
+// ============================================
+
+const MEAL_PLAN_FLOW = {
+  category: 'meal_plan',
+  title: 'Meal Plan',
+  icon: '🥗',
+  questions: [
+    {
+      id: 'restrictions',
+      text: "Any dietary restrictions or preferences?",
+      placeholder: "e.g., vegetarian, gluten-free, no nuts, halal...",
+      type: 'freeform'
+    },
+    {
+      id: 'meals_per_day',
+      text: "How many meals per day?",
+      type: 'choice',
+      options: ['2 meals', '3 meals', '3 meals + snacks']
+    },
+    {
+      id: 'cooking_time',
+      text: "How much time do you have for cooking per meal?",
+      type: 'choice',
+      options: ['15 min (quick & easy)', '30 min (moderate)', '45+ min (love cooking)']
+    },
+    {
+      id: 'household_size',
+      text: "Cooking for how many people?",
+      type: 'choice',
+      options: ['Just me', '2 people', '3-4 people', '5+ people']
+    },
+    {
+      id: 'goals',
+      text: "Any specific health or budget goals?",
+      placeholder: "e.g., lose weight, more energy, budget-friendly, high protein...",
+      type: 'freeform'
+    }
+  ],
+  systemPrompt: `You are a nutrition-aware meal planning assistant. Create practical, delicious meal plans based on user preferences.
+
+Your response must be valid JSON matching this exact structure:
+{
+  "name": "Weekly [Type] Meal Plan",
+  "summary": "Brief 1-line description",
+  "parameters": {
+    "restrictions": "user restrictions",
+    "meals_per_day": 3,
+    "prep_time": "30 min",
+    "servings": 2
+  },
+  "days": [
+    {
+      "day": "Monday",
+      "meals": {
+        "breakfast": {
+          "name": "Meal name",
+          "prep_time": "X min",
+          "ingredients": ["ingredient1", "ingredient2"],
+          "instructions": "Brief cooking instructions"
+        },
+        "lunch": { ... },
+        "dinner": { ... }
+      }
+    }
+  ],
+  "shopping_list": {
+    "produce": ["item1", "item2"],
+    "protein": ["item1"],
+    "dairy": ["item1"],
+    "pantry": ["item1"],
+    "frozen": ["item1"]
+  },
+  "meal_prep_tips": [
+    "Tip 1 for batch cooking",
+    "Tip 2 for saving time"
+  ]
+}
+
+Include all 7 days. Make meals varied, balanced, and practical. Include specific quantities in ingredients. Keep instructions concise but clear.`
+};
+
+const PLAN_CATEGORIES = [
+  MEAL_PLAN_FLOW,
+  // Future: FITNESS_PLAN_FLOW, TRIP_PLAN_FLOW, etc.
+];
+
+// ============================================
 // UTILITY FUNCTIONS
 // ============================================
 
@@ -144,6 +232,7 @@ const useGoals = () => {
   const [milestones, setMilestones] = useState([]);
   const [objectives, setObjectives] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [plans, setPlans] = useState([]);
   const [settings, setSettings] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -201,6 +290,16 @@ const useGoals = () => {
         if (tasksError) {
           console.error('Tasks error:', tasksError);
         }
+
+        const { data: plansData, error: plansError } = await supabase
+          .from('plans')
+          .select('*')
+          .is('archived_at', null)
+          .order('created_at', { ascending: false });
+        
+        if (plansError) {
+          console.error('Plans error:', plansError);
+        }
         
         const entriesMap = {};
         entriesData?.forEach(entry => {
@@ -217,6 +316,7 @@ const useGoals = () => {
         setMilestones(milestonesData || []);
         setObjectives(objectivesData || []);
         setTasks(tasksData || []);
+        setPlans(plansData || []);
         setSettings(settingsMap);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -618,11 +718,65 @@ const useGoals = () => {
     }
   }, []);
 
+  // Plan functions
+  const savePlan = useCallback(async (planData) => {
+    try {
+      const { data, error } = await supabase
+        .from('plans')
+        .insert({
+          name: planData.name,
+          category: planData.category || 'meal_plan',
+          content: planData.content,
+          summary: planData.summary
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      setPlans(prev => [data, ...prev]);
+      return data;
+    } catch (err) {
+      console.error('Error saving plan:', err);
+      return null;
+    }
+  }, []);
+
+  const archivePlan = useCallback(async (planId) => {
+    try {
+      const { error } = await supabase
+        .from('plans')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', planId);
+      
+      if (error) throw error;
+      setPlans(prev => prev.filter(p => p.id !== planId));
+    } catch (err) {
+      console.error('Error archiving plan:', err);
+    }
+  }, []);
+
+  const linkPlanItem = useCallback(async (planId, itemType, itemId) => {
+    try {
+      const { error } = await supabase
+        .from('plan_items')
+        .insert({
+          plan_id: planId,
+          item_type: itemType,
+          item_id: itemId
+        });
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error linking plan item:', err);
+    }
+  }, []);
+
   return { 
-    goals, entries, objectives, tasks, settings, isLoaded, 
+    goals, entries, objectives, tasks, plans, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
-    addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask
+    addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
+    savePlan, archivePlan, linkPlanItem
   };
 };
 
@@ -1110,6 +1264,433 @@ const getStyles = (theme, isDark = false) => ({
   trophyItemDate: {
     fontSize: '11px',
     color: theme.textFaint,
+  },
+  // AI Planning styles
+  aiPlannerBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    width: '100%',
+    padding: '14px 16px',
+    background: `linear-gradient(135deg, ${theme.bgSecondary} 0%, ${theme.bg} 100%)`,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '10px',
+    cursor: 'pointer',
+    marginBottom: '20px',
+    textAlign: 'left',
+  },
+  aiPlannerIcon: {
+    fontSize: '20px',
+  },
+  aiPlannerText: {
+    flex: 1,
+  },
+  aiPlannerTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: theme.text,
+  },
+  aiPlannerSubtitle: {
+    fontSize: '12px',
+    color: theme.textMuted,
+  },
+  aiPlannerArrow: {
+    fontSize: '16px',
+    color: theme.textFaint,
+  },
+  // AI Modal
+  aiModalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: theme.modalOverlay,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '20px',
+  },
+  aiModal: {
+    background: theme.bg,
+    borderRadius: '12px',
+    width: '100%',
+    maxWidth: '480px',
+    maxHeight: '85vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  aiModalHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '16px 20px',
+    borderBottom: `1px solid ${theme.border}`,
+  },
+  aiModalIcon: {
+    fontSize: '20px',
+  },
+  aiModalTitle: {
+    flex: 1,
+    fontSize: '16px',
+    fontWeight: '600',
+    color: theme.text,
+  },
+  aiModalClose: {
+    background: 'none',
+    border: 'none',
+    fontSize: '20px',
+    color: theme.textMuted,
+    cursor: 'pointer',
+    padding: '4px',
+  },
+  aiModalBody: {
+    flex: 1,
+    overflow: 'auto',
+    padding: '20px',
+  },
+  aiQuestion: {
+    marginBottom: '20px',
+  },
+  aiQuestionText: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: theme.text,
+    marginBottom: '10px',
+  },
+  aiQuestionInput: {
+    width: '100%',
+    padding: '10px 12px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    fontSize: '14px',
+    background: theme.bg,
+    color: theme.text,
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  aiChoices: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  aiChoice: {
+    padding: '10px 14px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    background: theme.bg,
+    color: theme.text,
+    fontSize: '13px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'all 0.15s ease',
+  },
+  aiChoiceSelected: {
+    borderColor: theme.checkboxChecked,
+    background: theme.bgSecondary,
+  },
+  aiProgress: {
+    display: 'flex',
+    gap: '6px',
+    marginBottom: '20px',
+  },
+  aiProgressDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    background: theme.border,
+  },
+  aiProgressDotActive: {
+    background: theme.checkboxChecked,
+  },
+  aiProgressDotComplete: {
+    background: theme.success,
+  },
+  aiModalFooter: {
+    display: 'flex',
+    gap: '10px',
+    padding: '16px 20px',
+    borderTop: `1px solid ${theme.border}`,
+  },
+  aiBackBtn: {
+    padding: '10px 16px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    background: theme.bg,
+    color: theme.textMuted,
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  aiNextBtn: {
+    flex: 1,
+    padding: '10px 16px',
+    border: 'none',
+    borderRadius: '6px',
+    background: theme.checkboxChecked,
+    color: theme.bg,
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  aiNextBtnDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  // AI Loading state
+  aiLoading: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px 20px',
+    gap: '16px',
+  },
+  aiLoadingSpinner: {
+    width: '32px',
+    height: '32px',
+    border: `3px solid ${theme.border}`,
+    borderTopColor: theme.checkboxChecked,
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  aiLoadingText: {
+    fontSize: '14px',
+    color: theme.textMuted,
+  },
+  // Plan viewer
+  planViewer: {
+    padding: '0',
+  },
+  planHeader: {
+    marginBottom: '16px',
+  },
+  planName: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: theme.text,
+    marginBottom: '4px',
+  },
+  planSummary: {
+    fontSize: '13px',
+    color: theme.textMuted,
+  },
+  planDay: {
+    marginBottom: '16px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
+  planDayHeader: {
+    padding: '10px 14px',
+    background: theme.bgSecondary,
+    fontWeight: '600',
+    fontSize: '13px',
+    color: theme.text,
+  },
+  planMeal: {
+    padding: '12px 14px',
+    borderTop: `1px solid ${theme.borderLight}`,
+  },
+  planMealType: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+    marginBottom: '4px',
+  },
+  planMealName: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: theme.text,
+    marginBottom: '6px',
+  },
+  planMealMeta: {
+    fontSize: '12px',
+    color: theme.textMuted,
+    marginBottom: '6px',
+  },
+  planMealIngredients: {
+    fontSize: '12px',
+    color: theme.textSecondary,
+    lineHeight: '1.5',
+  },
+  planSection: {
+    marginTop: '20px',
+    padding: '14px',
+    background: theme.bgSecondary,
+    borderRadius: '8px',
+  },
+  planSectionTitle: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: theme.text,
+    marginBottom: '10px',
+  },
+  planSectionList: {
+    fontSize: '12px',
+    color: theme.textSecondary,
+    lineHeight: '1.6',
+  },
+  planActions: {
+    display: 'flex',
+    gap: '10px',
+    marginTop: '20px',
+  },
+  planSaveBtn: {
+    flex: 1,
+    padding: '12px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    background: theme.bg,
+    color: theme.text,
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  planConvertBtn: {
+    flex: 1,
+    padding: '12px',
+    border: 'none',
+    borderRadius: '6px',
+    background: theme.checkboxChecked,
+    color: theme.bg,
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  // Conversion wizard
+  conversionItem: {
+    marginBottom: '16px',
+    padding: '14px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '8px',
+  },
+  conversionItemHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '8px',
+  },
+  conversionItemType: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+  },
+  conversionItemName: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: theme.text,
+  },
+  conversionItemWhy: {
+    fontSize: '12px',
+    color: theme.textMuted,
+    marginBottom: '12px',
+    fontStyle: 'italic',
+  },
+  conversionItemActions: {
+    display: 'flex',
+    gap: '8px',
+  },
+  conversionRadio: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 10px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '4px',
+    fontSize: '12px',
+    color: theme.textMuted,
+    cursor: 'pointer',
+  },
+  conversionRadioSelected: {
+    borderColor: theme.checkboxChecked,
+    background: theme.bgSecondary,
+    color: theme.text,
+  },
+  conversionTaskList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  conversionTask: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '13px',
+    color: theme.text,
+  },
+  conversionTaskCheck: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '3px',
+    border: `2px solid ${theme.checkboxBorder}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    background: theme.bg,
+  },
+  conversionTaskCheckSelected: {
+    background: theme.checkboxChecked,
+    borderColor: theme.checkboxChecked,
+  },
+  createItemsBtn: {
+    width: '100%',
+    padding: '14px',
+    border: 'none',
+    borderRadius: '6px',
+    background: theme.success,
+    color: '#fff',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    marginTop: '10px',
+  },
+  // Plans section
+  plansSection: {
+    marginBottom: '20px',
+  },
+  planCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 14px',
+    background: theme.bgSecondary,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '8px',
+    cursor: 'pointer',
+    marginBottom: '8px',
+  },
+  planCardIcon: {
+    fontSize: '18px',
+  },
+  planCardInfo: {
+    flex: 1,
+  },
+  planCardName: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: theme.text,
+  },
+  planCardMeta: {
+    fontSize: '11px',
+    color: theme.textFaint,
+  },
+  planCardActions: {
+    display: 'flex',
+    gap: '8px',
+  },
+  planCardBtn: {
+    padding: '6px 10px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '4px',
+    background: theme.bg,
+    color: theme.textMuted,
+    fontSize: '11px',
+    cursor: 'pointer',
   },
   goalsSection: {
     marginBottom: '0',
@@ -2309,6 +2890,579 @@ function TaskEditor({ task, objectives, onSave, onDelete, onClose, styles }) {
 }
 
 // ============================================
+// AI PLANNER MODAL
+// ============================================
+
+function AIPlannerModal({ 
+  onClose, 
+  onSavePlan, 
+  onCreateItems,
+  styles, 
+  theme 
+}) {
+  const [step, setStep] = useState('questions'); // questions, loading, plan, convert
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [generatedPlan, setGeneratedPlan] = useState(null);
+  const [error, setError] = useState(null);
+  
+  // Conversion state
+  const [createObjective, setCreateObjective] = useState(true);
+  const [createGoal, setCreateGoal] = useState(true);
+  const [selectedTasks, setSelectedTasks] = useState({
+    grocery: true,
+    mealPrep: true
+  });
+
+  const flow = MEAL_PLAN_FLOW;
+  const questions = flow.questions;
+  const question = questions[currentQuestion];
+  const isLastQuestion = currentQuestion === questions.length - 1;
+
+  const handleAnswer = (value) => {
+    setAnswers(prev => ({ ...prev, [question.id]: value }));
+  };
+
+  const handleNext = async () => {
+    if (isLastQuestion) {
+      // Generate plan
+      setStep('loading');
+      setError(null);
+      
+      try {
+        const userContext = Object.entries(answers)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join('\n');
+        
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4000,
+            messages: [
+              { 
+                role: "user", 
+                content: `Based on these preferences, create a detailed 7-day meal plan:
+
+${userContext}
+
+${flow.systemPrompt}
+
+Respond with ONLY valid JSON, no markdown or explanation.` 
+              }
+            ],
+          })
+        });
+
+        const data = await response.json();
+        const content = data.content?.[0]?.text;
+        
+        if (!content) {
+          throw new Error('No response from AI');
+        }
+
+        // Parse JSON from response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Could not parse meal plan');
+        }
+        
+        const plan = JSON.parse(jsonMatch[0]);
+        setGeneratedPlan(plan);
+        setStep('plan');
+      } catch (err) {
+        console.error('AI Error:', err);
+        setError(err.message || 'Failed to generate plan. Please try again.');
+        setStep('questions');
+      }
+    } else {
+      setCurrentQuestion(prev => prev + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentQuestion > 0) {
+      setCurrentQuestion(prev => prev - 1);
+    }
+  };
+
+  const handleSavePlan = async () => {
+    const savedPlan = await onSavePlan({
+      name: generatedPlan.name,
+      category: 'meal_plan',
+      content: generatedPlan,
+      summary: generatedPlan.summary
+    });
+    if (savedPlan) {
+      onClose();
+    }
+  };
+
+  const handleConvert = () => {
+    setStep('convert');
+  };
+
+  const handleCreateItems = async () => {
+    const items = {
+      objective: createObjective ? {
+        name: 'Follow meal plan',
+        start_date: getToday()
+      } : null,
+      goal: createGoal ? {
+        name: 'Stick to meal plan',
+        target: 7
+      } : null,
+      tasks: []
+    };
+    
+    if (selectedTasks.grocery) {
+      items.tasks.push({ name: 'Week 1 grocery shopping' });
+    }
+    if (selectedTasks.mealPrep) {
+      items.tasks.push({ name: 'Sunday meal prep' });
+    }
+
+    // Save plan first
+    const savedPlan = await onSavePlan({
+      name: generatedPlan.name,
+      category: 'meal_plan',
+      content: generatedPlan,
+      summary: generatedPlan.summary
+    });
+
+    if (savedPlan) {
+      await onCreateItems(items, savedPlan.id);
+      onClose();
+    }
+  };
+
+  const canProceed = question?.type === 'choice' 
+    ? !!answers[question?.id]
+    : true;
+
+  return (
+    <div style={styles.aiModalOverlay} onClick={onClose}>
+      <div style={styles.aiModal} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={styles.aiModalHeader}>
+          <span style={styles.aiModalIcon}>{flow.icon}</span>
+          <span style={styles.aiModalTitle}>
+            {step === 'convert' ? 'Convert to Tracker' : flow.title}
+          </span>
+          <button onClick={onClose} style={styles.aiModalClose}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={styles.aiModalBody}>
+          {step === 'questions' && (
+            <>
+              {/* Progress dots */}
+              <div style={styles.aiProgress}>
+                {questions.map((_, idx) => (
+                  <div 
+                    key={idx} 
+                    style={{
+                      ...styles.aiProgressDot,
+                      ...(idx < currentQuestion ? styles.aiProgressDotComplete : {}),
+                      ...(idx === currentQuestion ? styles.aiProgressDotActive : {}),
+                    }} 
+                  />
+                ))}
+              </div>
+
+              {error && (
+                <div style={{ 
+                  padding: '10px 14px', 
+                  background: theme.danger + '20', 
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  fontSize: '13px',
+                  color: theme.danger 
+                }}>
+                  {error}
+                </div>
+              )}
+
+              {/* Question */}
+              <div style={styles.aiQuestion}>
+                <div style={styles.aiQuestionText}>{question.text}</div>
+                
+                {question.type === 'freeform' && (
+                  <input
+                    type="text"
+                    value={answers[question.id] || ''}
+                    onChange={e => handleAnswer(e.target.value)}
+                    placeholder={question.placeholder}
+                    style={styles.aiQuestionInput}
+                    autoFocus
+                  />
+                )}
+
+                {question.type === 'choice' && (
+                  <div style={styles.aiChoices}>
+                    {question.options.map(option => (
+                      <button
+                        key={option}
+                        onClick={() => handleAnswer(option)}
+                        style={{
+                          ...styles.aiChoice,
+                          ...(answers[question.id] === option ? styles.aiChoiceSelected : {}),
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {step === 'loading' && (
+            <div style={styles.aiLoading}>
+              <div style={styles.aiLoadingSpinner} />
+              <div style={styles.aiLoadingText}>Creating your meal plan...</div>
+            </div>
+          )}
+
+          {step === 'plan' && generatedPlan && (
+            <div style={styles.planViewer}>
+              <div style={styles.planHeader}>
+                <div style={styles.planName}>{generatedPlan.name}</div>
+                <div style={styles.planSummary}>{generatedPlan.summary}</div>
+              </div>
+
+              {/* Days */}
+              {generatedPlan.days?.slice(0, 3).map(day => (
+                <div key={day.day} style={styles.planDay}>
+                  <div style={styles.planDayHeader}>{day.day}</div>
+                  {Object.entries(day.meals || {}).map(([mealType, meal]) => (
+                    <div key={mealType} style={styles.planMeal}>
+                      <div style={styles.planMealType}>{mealType}</div>
+                      <div style={styles.planMealName}>{meal.name}</div>
+                      <div style={styles.planMealMeta}>⏱ {meal.prep_time}</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              
+              {generatedPlan.days?.length > 3 && (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '10px',
+                  fontSize: '12px',
+                  color: theme.textMuted 
+                }}>
+                  + {generatedPlan.days.length - 3} more days
+                </div>
+              )}
+
+              {/* Shopping list preview */}
+              {generatedPlan.shopping_list && (
+                <div style={styles.planSection}>
+                  <div style={styles.planSectionTitle}>🛒 Shopping List</div>
+                  <div style={styles.planSectionList}>
+                    {Object.entries(generatedPlan.shopping_list).slice(0, 3).map(([category, items]) => (
+                      <div key={category}>
+                        <strong>{category}:</strong> {items.slice(0, 4).join(', ')}
+                        {items.length > 4 && ` +${items.length - 4} more`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={styles.planActions}>
+                <button onClick={handleSavePlan} style={styles.planSaveBtn}>
+                  📥 Save Plan
+                </button>
+                <button onClick={handleConvert} style={styles.planConvertBtn}>
+                  ➡️ Convert to Tracker
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 'convert' && (
+            <div>
+              <p style={{ fontSize: '13px', color: theme.textMuted, marginBottom: '20px' }}>
+                Based on your meal plan, I recommend creating these items:
+              </p>
+
+              {/* Objective */}
+              <div style={styles.conversionItem}>
+                <div style={styles.conversionItemHeader}>
+                  <span style={styles.conversionItemType}>◎ Objective</span>
+                </div>
+                <div style={styles.conversionItemName}>Follow meal plan</div>
+                <div style={styles.conversionItemWhy}>
+                  This captures your overall health goal. The meal plan will be saved for reference.
+                </div>
+                <div style={styles.conversionItemActions}>
+                  <button
+                    onClick={() => setCreateObjective(true)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(createObjective ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    ✓ Create
+                  </button>
+                  <button
+                    onClick={() => setCreateObjective(false)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(!createObjective ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+
+              {/* Goal */}
+              <div style={styles.conversionItem}>
+                <div style={styles.conversionItemHeader}>
+                  <span style={styles.conversionItemType}>⟳ Goal (7x/week)</span>
+                </div>
+                <div style={styles.conversionItemName}>Stick to meal plan</div>
+                <div style={styles.conversionItemWhy}>
+                  Track daily adherence to build the habit. Check off each day you follow the plan.
+                </div>
+                <div style={styles.conversionItemActions}>
+                  <button
+                    onClick={() => setCreateGoal(true)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(createGoal ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    ✓ Create
+                  </button>
+                  <button
+                    onClick={() => setCreateGoal(false)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(!createGoal ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+
+              {/* Tasks */}
+              <div style={styles.conversionItem}>
+                <div style={styles.conversionItemHeader}>
+                  <span style={styles.conversionItemType}>◇ Tasks (one-time)</span>
+                </div>
+                <div style={styles.conversionTaskList}>
+                  <div style={styles.conversionTask}>
+                    <div 
+                      onClick={() => setSelectedTasks(prev => ({ ...prev, grocery: !prev.grocery }))}
+                      style={{
+                        ...styles.conversionTaskCheck,
+                        ...(selectedTasks.grocery ? styles.conversionTaskCheckSelected : {}),
+                      }}
+                    >
+                      {selectedTasks.grocery && <span style={{ color: theme.bg, fontSize: '10px' }}>✓</span>}
+                    </div>
+                    Week 1 grocery shopping
+                  </div>
+                  <div style={styles.conversionTask}>
+                    <div 
+                      onClick={() => setSelectedTasks(prev => ({ ...prev, mealPrep: !prev.mealPrep }))}
+                      style={{
+                        ...styles.conversionTaskCheck,
+                        ...(selectedTasks.mealPrep ? styles.conversionTaskCheckSelected : {}),
+                      }}
+                    >
+                      {selectedTasks.mealPrep && <span style={{ color: theme.bg, fontSize: '10px' }}>✓</span>}
+                    </div>
+                    Sunday meal prep
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={handleCreateItems} style={styles.createItemsBtn}>
+                Create {[createObjective, createGoal, selectedTasks.grocery, selectedTasks.mealPrep].filter(Boolean).length} Items
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer - only for questions step */}
+        {step === 'questions' && (
+          <div style={styles.aiModalFooter}>
+            {currentQuestion > 0 && (
+              <button onClick={handleBack} style={styles.aiBackBtn}>
+                ← Back
+              </button>
+            )}
+            <button 
+              onClick={handleNext}
+              disabled={!canProceed}
+              style={{
+                ...styles.aiNextBtn,
+                ...(!canProceed ? styles.aiNextBtnDisabled : {}),
+              }}
+            >
+              {isLastQuestion ? 'Generate Plan ✨' : 'Next →'}
+            </button>
+          </div>
+        )}
+
+        {step === 'plan' && (
+          <div style={styles.aiModalFooter}>
+            <button onClick={() => setStep('questions')} style={styles.aiBackBtn}>
+              ← Start Over
+            </button>
+          </div>
+        )}
+
+        {step === 'convert' && (
+          <div style={styles.aiModalFooter}>
+            <button onClick={() => setStep('plan')} style={styles.aiBackBtn}>
+              ← Back to Plan
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* CSS animation for spinner */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ============================================
+// PLAN VIEWER MODAL
+// ============================================
+
+function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
+  const content = plan.content || {};
+  
+  const exportMarkdown = () => {
+    let md = `# ${content.name || plan.name}\n\n`;
+    md += `${content.summary || ''}\n\n`;
+    
+    if (content.days) {
+      content.days.forEach(day => {
+        md += `## ${day.day}\n\n`;
+        Object.entries(day.meals || {}).forEach(([type, meal]) => {
+          md += `### ${type.charAt(0).toUpperCase() + type.slice(1)}: ${meal.name}\n`;
+          md += `- Prep time: ${meal.prep_time}\n`;
+          md += `- Ingredients: ${meal.ingredients?.join(', ')}\n`;
+          md += `- Instructions: ${meal.instructions}\n\n`;
+        });
+      });
+    }
+    
+    if (content.shopping_list) {
+      md += `## Shopping List\n\n`;
+      Object.entries(content.shopping_list).forEach(([category, items]) => {
+        md += `**${category}:** ${items.join(', ')}\n\n`;
+      });
+    }
+    
+    // Download
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${plan.name.replace(/\s+/g, '-').toLowerCase()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div style={styles.aiModalOverlay} onClick={onClose}>
+      <div style={styles.aiModal} onClick={e => e.stopPropagation()}>
+        <div style={styles.aiModalHeader}>
+          <span style={styles.aiModalIcon}>📋</span>
+          <span style={styles.aiModalTitle}>{plan.name}</span>
+          <button onClick={onClose} style={styles.aiModalClose}>×</button>
+        </div>
+
+        <div style={styles.aiModalBody}>
+          <div style={styles.planViewer}>
+            {content.summary && (
+              <div style={{ ...styles.planSummary, marginBottom: '16px' }}>
+                {content.summary}
+              </div>
+            )}
+
+            {/* All days */}
+            {content.days?.map(day => (
+              <div key={day.day} style={styles.planDay}>
+                <div style={styles.planDayHeader}>{day.day}</div>
+                {Object.entries(day.meals || {}).map(([mealType, meal]) => (
+                  <div key={mealType} style={styles.planMeal}>
+                    <div style={styles.planMealType}>{mealType}</div>
+                    <div style={styles.planMealName}>{meal.name}</div>
+                    <div style={styles.planMealMeta}>⏱ {meal.prep_time}</div>
+                    <div style={styles.planMealIngredients}>
+                      {meal.ingredients?.join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Shopping list */}
+            {content.shopping_list && (
+              <div style={styles.planSection}>
+                <div style={styles.planSectionTitle}>🛒 Shopping List</div>
+                <div style={styles.planSectionList}>
+                  {Object.entries(content.shopping_list).map(([category, items]) => (
+                    <div key={category} style={{ marginBottom: '8px' }}>
+                      <strong>{category}:</strong> {items.join(', ')}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Meal prep tips */}
+            {content.meal_prep_tips && (
+              <div style={styles.planSection}>
+                <div style={styles.planSectionTitle}>💡 Meal Prep Tips</div>
+                <div style={styles.planSectionList}>
+                  {content.meal_prep_tips.map((tip, i) => (
+                    <div key={i}>• {tip}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={styles.aiModalFooter}>
+          <button onClick={() => onArchive(plan.id)} style={styles.modalDeleteBtn}>
+            Archive
+          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={exportMarkdown} style={styles.aiBackBtn}>
+            📥 Export
+          </button>
+          <button onClick={onClose} style={styles.aiNextBtn}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS MODAL
 // ============================================
 
@@ -2404,10 +3558,11 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 
 export default function App() {
   const { 
-    goals, entries, objectives, tasks, settings, isLoaded, 
+    goals, entries, objectives, tasks, plans, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
-    addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask
+    addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
+    savePlan, archivePlan, linkPlanItem
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -2423,6 +3578,7 @@ export default function App() {
   const [showTaskEditor, setShowTaskEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [objectivesExpanded, setObjectivesExpanded] = useState(true);
+  const [plansExpanded, setPlansExpanded] = useState(true);
   const [tasksExpanded, setTasksExpanded] = useState(true);
   const [goalsExpanded, setGoalsExpanded] = useState(true);
   const [expandedObjectiveId, setExpandedObjectiveId] = useState(null);
@@ -2432,6 +3588,9 @@ export default function App() {
   const [showTaskAdd, setShowTaskAdd] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskObjectiveId, setNewTaskObjectiveId] = useState(null);
+  // AI Planner state
+  const [showAIPlanner, setShowAIPlanner] = useState(false);
+  const [viewingPlan, setViewingPlan] = useState(null);
   
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
@@ -2461,6 +3620,34 @@ export default function App() {
       const newIndex = goals.findIndex(g => g.id === over.id);
       const newGoals = arrayMove(goals, oldIndex, newIndex);
       reorderGoals(newGoals);
+    }
+  };
+
+  // Handle creating items from AI plan conversion
+  const handleCreateItemsFromPlan = async (items, planId) => {
+    let objectiveId = null;
+    
+    // Create objective
+    if (items.objective) {
+      const objData = await saveObjective(items.objective);
+      if (objData) {
+        objectiveId = objData.id;
+        await linkPlanItem(planId, 'objective', objData.id);
+      }
+    }
+    
+    // Create goal (linked to objective if created)
+    if (items.goal) {
+      const goalData = {
+        ...items.goal,
+        objective_id: objectiveId
+      };
+      await addGoal(goalData.name, goalData.target, goalData.objective_id);
+    }
+    
+    // Create tasks
+    for (const task of items.tasks) {
+      await addTask(task.name, objectiveId);
     }
   };
 
@@ -2614,6 +3801,58 @@ export default function App() {
           {darkMode ? '☀️' : '🌙'}
         </button>
       </div>
+
+      {/* AI Planner Button */}
+      <button 
+        onClick={() => setShowAIPlanner(true)}
+        style={styles.aiPlannerBtn}
+      >
+        <span style={styles.aiPlannerIcon}>✨</span>
+        <div style={styles.aiPlannerText}>
+          <div style={styles.aiPlannerTitle}>Plan with AI</div>
+          <div style={styles.aiPlannerSubtitle}>Get help creating a detailed plan for any goal</div>
+        </div>
+        <span style={styles.aiPlannerArrow}>→</span>
+      </button>
+
+      {/* Plans Section */}
+      {plans.length > 0 && (
+        <div style={styles.plansSection}>
+          <div style={styles.sectionHeader}>
+            <div style={styles.sectionHeaderLeft}>
+              <button 
+                onClick={() => setPlansExpanded(!plansExpanded)} 
+                style={styles.collapseBtn}
+              >
+                {plansExpanded ? '−' : '+'}
+              </button>
+              <span style={styles.sectionTitle}>Plans</span>
+              {!plansExpanded && (
+                <span style={styles.sectionCount}>({plans.length})</span>
+              )}
+            </div>
+          </div>
+          {plansExpanded && (
+            <div>
+              {plans.map(plan => (
+                <div 
+                  key={plan.id} 
+                  style={styles.planCard}
+                  onClick={() => setViewingPlan(plan)}
+                >
+                  <span style={styles.planCardIcon}>📋</span>
+                  <div style={styles.planCardInfo}>
+                    <div style={styles.planCardName}>{plan.name}</div>
+                    <div style={styles.planCardMeta}>
+                      {plan.summary || new Date(plan.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Objectives Section */}
       <div style={styles.objectivesSection}>
@@ -3088,6 +4327,28 @@ export default function App() {
           settings={settings}
           onSave={saveSetting}
           onClose={() => setShowSettings(false)}
+          styles={styles}
+          theme={theme}
+        />
+      )}
+
+      {/* AI Planner Modal */}
+      {showAIPlanner && (
+        <AIPlannerModal
+          onClose={() => setShowAIPlanner(false)}
+          onSavePlan={savePlan}
+          onCreateItems={handleCreateItemsFromPlan}
+          styles={styles}
+          theme={theme}
+        />
+      )}
+
+      {/* Plan Viewer Modal */}
+      {viewingPlan && (
+        <PlanViewerModal
+          plan={viewingPlan}
+          onClose={() => setViewingPlan(null)}
+          onArchive={archivePlan}
           styles={styles}
           theme={theme}
         />
