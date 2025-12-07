@@ -2934,38 +2934,51 @@ function AIPlannerModal({
           .map(([key, value]) => `${key}: ${value}`)
           .join('\n');
         
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 4000,
-            messages: [
-              { 
-                role: "user", 
-                content: `Based on these preferences, create a detailed 7-day meal plan:
+        const response = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDvcTOgjEiE_MLIsQt3CkHlUsvbOqLI8uc",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: `Based on these preferences, create a detailed 7-day meal plan:
 
 ${userContext}
 
 ${flow.systemPrompt}
 
-Respond with ONLY valid JSON, no markdown or explanation.` 
+Respond with ONLY valid JSON, no markdown code blocks or explanation. Start directly with { and end with }`
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 8000,
               }
-            ],
-          })
-        });
+            })
+          }
+        );
 
         const data = await response.json();
-        const content = data.content?.[0]?.text;
+        
+        if (data.error) {
+          throw new Error(data.error.message || 'API error');
+        }
+        
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!content) {
           throw new Error('No response from AI');
         }
 
-        // Parse JSON from response
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        // Parse JSON from response - handle potential markdown code blocks
+        let jsonStr = content;
+        // Remove markdown code blocks if present
+        jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        // Find JSON object
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           throw new Error('Could not parse meal plan');
         }
