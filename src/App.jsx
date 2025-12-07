@@ -608,6 +608,7 @@ const getStyles = (theme) => ({
     background: theme.bgSecondary,
     border: `1px solid ${theme.border}`,
     borderRadius: '8px',
+    borderLeft: '4px solid',
     cursor: 'pointer',
     textAlign: 'left',
     width: '100%',
@@ -623,9 +624,26 @@ const getStyles = (theme) => ({
     color: theme.text,
     flex: 1,
   },
+  objectiveDays: {
+    fontSize: '11px',
+    color: theme.textMuted,
+    whiteSpace: 'nowrap',
+  },
   objectiveGoalCount: {
     fontSize: '11px',
     color: theme.textFaint,
+  },
+  objectiveProgressTrack: {
+    width: '60px',
+    height: '5px',
+    background: theme.border,
+    borderRadius: '3px',
+    overflow: 'hidden',
+  },
+  objectiveProgressBar: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease',
   },
   objectivePct: {
     fontSize: '12px',
@@ -1322,10 +1340,16 @@ function MilestoneEditor({ milestone, onSave, onDelete, onClose, styles }) {
 
 function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
   const [name, setName] = useState(objective?.name || '');
+  const [startDate, setStartDate] = useState(objective?.start_date || '');
+  const [targetDate, setTargetDate] = useState(objective?.target_date || '');
 
   const handleSave = () => {
     if (!name.trim()) return;
-    onSave({ name: name.trim() }, objective?.id);
+    onSave({ 
+      name: name.trim(),
+      start_date: startDate || null,
+      target_date: targetDate || null
+    }, objective?.id);
     onClose();
   };
 
@@ -1346,6 +1370,33 @@ function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
             style={styles.modalInput}
             autoFocus
           />
+        </div>
+
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Target Date (optional)</label>
+          <p style={styles.modalHint}>
+            Set a deadline to track progress toward this objective.
+          </p>
+          <div style={styles.modalRow}>
+            <div style={{ flex: 1 }}>
+              <label style={styles.modalLabel}>Start</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={styles.modalLabel}>Target</label>
+              <input
+                type="date"
+                value={targetDate}
+                onChange={e => setTargetDate(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+          </div>
         </div>
         
         <div style={styles.modalActions}>
@@ -1377,15 +1428,11 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
   const [thresholdYellow, setThresholdYellow] = useState(
     settings.threshold_yellow || '50'
   );
-  const [milestoneColors, setMilestoneColors] = useState(
-    settings.milestone_colors !== 'false'
-  );
 
   const handleSave = () => {
     onSave('tracking_start_date', trackingStartDate);
     onSave('threshold_green', thresholdGreen);
     onSave('threshold_yellow', thresholdYellow);
-    onSave('milestone_colors', milestoneColors ? 'true' : 'false');
     onClose();
   };
 
@@ -1446,29 +1493,6 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
             </div>
           </div>
         </div>
-
-        <div style={styles.modalField}>
-          <div style={styles.toggleContainer}>
-            <div>
-              <label style={styles.modalLabel}>Color milestone progress</label>
-              <p style={styles.modalHintInline}>
-                Apply threshold colors to milestone percentages
-              </p>
-            </div>
-            <div 
-              onClick={() => setMilestoneColors(!milestoneColors)}
-              style={{
-                ...styles.toggleSwitch,
-                ...(milestoneColors ? styles.toggleSwitchOn : styles.toggleSwitchOff),
-              }}
-            >
-              <div style={{
-                ...styles.toggleKnob,
-                ...(milestoneColors ? styles.toggleKnobOn : styles.toggleKnobOff),
-              }} />
-            </div>
-          </div>
-        </div>
         
         <div style={styles.modalActions}>
           <div style={{ flex: 1 }} />
@@ -1486,10 +1510,9 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 
 export default function App() {
   const { 
-    goals, entries, milestones, objectives, settings, isLoaded, 
+    goals, entries, objectives, settings, isLoaded, 
     addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveMilestone, deleteMilestone, saveSetting,
-    saveObjective, deleteObjective, updateGoalObjective
+    saveSetting, saveObjective, deleteObjective, updateGoalObjective
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -1497,8 +1520,6 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPerformance, setShowPerformance] = useState(false);
-  const [editingMilestone, setEditingMilestone] = useState(null);
-  const [showMilestoneEditor, setShowMilestoneEditor] = useState(false);
   const [editingObjective, setEditingObjective] = useState(null);
   const [showObjectiveEditor, setShowObjectiveEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1511,8 +1532,6 @@ export default function App() {
     green: parseInt(settings.threshold_green) || 80,
     yellow: parseInt(settings.threshold_yellow) || 50,
   }), [settings.threshold_green, settings.threshold_yellow]);
-  
-  const milestoneColors = settings.milestone_colors !== 'false';
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
@@ -1593,16 +1612,6 @@ export default function App() {
     if (e.key === 'Escape') handleCancelAdd();
   };
 
-  const handleEditMilestone = (milestone) => {
-    setEditingMilestone(milestone);
-    setShowMilestoneEditor(true);
-  };
-
-  const handleAddMilestone = () => {
-    setEditingMilestone(null);
-    setShowMilestoneEditor(true);
-  };
-
   const handleEditObjective = (objective) => {
     setEditingObjective(objective);
     setShowObjectiveEditor(true);
@@ -1639,19 +1648,6 @@ export default function App() {
         </button>
       </div>
 
-      {/* Milestones Section */}
-      <MilestonesSection
-        milestones={milestones}
-        goals={goals}
-        entries={entries}
-        onEdit={handleEditMilestone}
-        onAdd={handleAddMilestone}
-        styles={styles}
-        theme={theme}
-        thresholds={thresholds}
-        milestoneColors={milestoneColors}
-      />
-
       {/* Objectives Section */}
       <div style={styles.objectivesSection}>
         <div style={styles.sectionHeader}>
@@ -1662,23 +1658,75 @@ export default function App() {
           <div style={styles.objectivesList}>
             {objectives.map(objective => {
               const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
-              const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
-              const totalAchieved = objectiveGoals.reduce((sum, g) => {
-                return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
-              }, 0);
-              const pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
+              const hasDeadline = objective.target_date;
+              const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
+              
+              // Calculate progress
+              let pct = 0;
+              if (hasDeadline && objective.start_date && objectiveGoals.length > 0) {
+                // Use milestone-style calculation for objectives with deadlines
+                const startWeek = getWeekStart(objective.start_date);
+                const currentWeek = getWeekStart(today);
+                const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
+                
+                let totalExpected = 0;
+                let totalAchieved = 0;
+                
+                objectiveGoals.forEach(goal => {
+                  const target = goal.target || 7;
+                  totalExpected += target * weeksCount;
+                  
+                  let currentDate = new Date(objective.start_date);
+                  const endDate = new Date(today);
+                  
+                  while (currentDate <= endDate) {
+                    const dateStr = getDateString(currentDate);
+                    if (entries[`${goal.id}-${dateStr}`]) {
+                      totalAchieved++;
+                    }
+                    currentDate.setDate(currentDate.getDate() + 1);
+                  }
+                });
+                
+                pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
+              } else {
+                // Simple weekly calculation for objectives without deadlines
+                const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
+                const totalAchieved = objectiveGoals.reduce((sum, g) => {
+                  return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
+                }, 0);
+                pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
+              }
+              
               const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
               
               return (
                 <button 
                   key={objective.id} 
                   onClick={() => handleEditObjective(objective)}
-                  style={styles.objectiveCard}
+                  style={{
+                    ...styles.objectiveCard,
+                    borderLeftColor: hasDeadline ? pctColor : theme.border,
+                  }}
                 >
                   <span style={styles.objectiveIcon}>◎</span>
                   <span style={styles.objectiveName}>{objective.name}</span>
-                  <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
-                  <span style={{ ...styles.objectivePct, color: pctColor }}>{pct}%</span>
+                  {hasDeadline && (
+                    <span style={styles.objectiveDays}>{daysRemaining}d</span>
+                  )}
+                  {!hasDeadline && (
+                    <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
+                  )}
+                  {hasDeadline && (
+                    <div style={styles.objectiveProgressTrack}>
+                      <div style={{
+                        ...styles.objectiveProgressBar,
+                        width: `${Math.min(100, pct)}%`,
+                        background: pctColor,
+                      }} />
+                    </div>
+                  )}
+                  <span style={{ ...styles.objectivePct, color: objectiveGoals.length > 0 ? pctColor : theme.textFaint }}>{pct}%</span>
                 </button>
               );
             })}
@@ -1901,17 +1949,6 @@ export default function App() {
           ⚙️ Settings
         </button>
       </div>
-
-      {/* Milestone Editor Modal */}
-      {showMilestoneEditor && (
-        <MilestoneEditor
-          milestone={editingMilestone}
-          onSave={saveMilestone}
-          onDelete={deleteMilestone}
-          onClose={() => setShowMilestoneEditor(false)}
-          styles={styles}
-        />
-      )}
 
       {/* Objective Editor Modal */}
       {showObjectiveEditor && (
