@@ -574,6 +574,27 @@ const getStyles = (theme, isDark = false) => ({
     alignItems: 'center',
     marginBottom: '10px',
   },
+  sectionHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  collapseBtn: {
+    width: '20px',
+    height: '20px',
+    borderRadius: '4px',
+    border: `1px solid ${theme.border}`,
+    background: theme.bg,
+    color: theme.textMuted,
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    lineHeight: 1,
+  },
   sectionTitle: {
     fontSize: '11px',
     fontWeight: '600',
@@ -653,6 +674,11 @@ const getStyles = (theme, isDark = false) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: '8px',
+  },
+  collapsedSummary: {
+    fontSize: '13px',
+    color: theme.textFaint,
+    padding: '8px 0',
   },
   objectiveCard: {
     display: 'flex',
@@ -1789,6 +1815,8 @@ export default function App() {
   const [editingGoal, setEditingGoal] = useState(null);
   const [showGoalEditor, setShowGoalEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [objectivesExpanded, setObjectivesExpanded] = useState(true);
+  const [goalsExpanded, setGoalsExpanded] = useState(true);
   
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
@@ -1922,85 +1950,101 @@ export default function App() {
       {/* Objectives Section */}
       <div style={styles.objectivesSection}>
         <div style={styles.sectionHeader}>
-          <span style={styles.sectionTitle}>Objectives</span>
-          <button onClick={handleAddObjective} style={styles.sectionAddBtn}>+</button>
+          <div style={styles.sectionHeaderLeft}>
+            <button 
+              onClick={() => setObjectivesExpanded(!objectivesExpanded)} 
+              style={styles.collapseBtn}
+            >
+              {objectivesExpanded ? '−' : '+'}
+            </button>
+            <span style={styles.sectionTitle}>Objectives</span>
+          </div>
+          {objectivesExpanded && (
+            <button onClick={handleAddObjective} style={styles.sectionAddBtn}>+</button>
+          )}
         </div>
-        {objectives.length > 0 && (
-          <div style={styles.objectivesList}>
-            {objectives.map(objective => {
-              const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
-              const hasDeadline = objective.target_date;
-              const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
-              
-              // Calculate progress
-              let pct = 0;
-              if (hasDeadline && objective.start_date && objectiveGoals.length > 0) {
-                // Use milestone-style calculation for objectives with deadlines
-                const startWeek = getWeekStart(objective.start_date);
-                const currentWeek = getWeekStart(today);
-                const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
+        {objectivesExpanded ? (
+          objectives.length > 0 && (
+            <div style={styles.objectivesList}>
+              {objectives.map(objective => {
+                const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
+                const hasDeadline = objective.target_date;
+                const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
                 
-                let totalExpected = 0;
-                let totalAchieved = 0;
-                
-                objectiveGoals.forEach(goal => {
-                  const target = goal.target || 7;
-                  totalExpected += target * weeksCount;
+                // Calculate progress
+                let pct = 0;
+                if (hasDeadline && objective.start_date && objectiveGoals.length > 0) {
+                  // Use milestone-style calculation for objectives with deadlines
+                  const startWeek = getWeekStart(objective.start_date);
+                  const currentWeek = getWeekStart(today);
+                  const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
                   
-                  let currentDate = new Date(objective.start_date);
-                  const endDate = new Date(today);
+                  let totalExpected = 0;
+                  let totalAchieved = 0;
                   
-                  while (currentDate <= endDate) {
-                    const dateStr = getDateString(currentDate);
-                    if (entries[`${goal.id}-${dateStr}`]) {
-                      totalAchieved++;
+                  objectiveGoals.forEach(goal => {
+                    const target = goal.target || 7;
+                    totalExpected += target * weeksCount;
+                    
+                    let currentDate = new Date(objective.start_date);
+                    const endDate = new Date(today);
+                    
+                    while (currentDate <= endDate) {
+                      const dateStr = getDateString(currentDate);
+                      if (entries[`${goal.id}-${dateStr}`]) {
+                        totalAchieved++;
+                      }
+                      currentDate.setDate(currentDate.getDate() + 1);
                     }
-                    currentDate.setDate(currentDate.getDate() + 1);
-                  }
-                });
+                  });
+                  
+                  pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
+                } else {
+                  // Simple weekly calculation for objectives without deadlines
+                  const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
+                  const totalAchieved = objectiveGoals.reduce((sum, g) => {
+                    return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
+                  }, 0);
+                  pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
+                }
                 
-                pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
-              } else {
-                // Simple weekly calculation for objectives without deadlines
-                const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
-                const totalAchieved = objectiveGoals.reduce((sum, g) => {
-                  return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
-                }, 0);
-                pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
-              }
-              
-              const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
-              
-              return (
-                <button 
-                  key={objective.id} 
-                  onClick={() => handleEditObjective(objective)}
-                  style={{
-                    ...styles.objectiveCard,
-                    borderLeftColor: hasDeadline ? pctColor : theme.border,
-                  }}
-                >
-                  <span style={styles.objectiveIcon}>◎</span>
-                  <span style={styles.objectiveName}>{objective.name}</span>
-                  {hasDeadline && (
-                    <span style={styles.objectiveDays}>{daysRemaining}d</span>
-                  )}
-                  {!hasDeadline && (
-                    <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
-                  )}
-                  {hasDeadline && (
-                    <div style={styles.objectiveProgressTrack}>
-                      <div style={{
-                        ...styles.objectiveProgressBar,
-                        width: `${Math.min(100, pct)}%`,
-                        background: pctColor,
-                      }} />
-                    </div>
-                  )}
-                  <span style={{ ...styles.objectivePct, color: objectiveGoals.length > 0 ? pctColor : theme.textFaint }}>{pct}%</span>
-                </button>
-              );
-            })}
+                const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
+                
+                return (
+                  <button 
+                    key={objective.id} 
+                    onClick={() => handleEditObjective(objective)}
+                    style={{
+                      ...styles.objectiveCard,
+                      borderLeftColor: hasDeadline ? pctColor : theme.border,
+                    }}
+                  >
+                    <span style={styles.objectiveIcon}>◎</span>
+                    <span style={styles.objectiveName}>{objective.name}</span>
+                    {hasDeadline && (
+                      <span style={styles.objectiveDays}>{daysRemaining}d</span>
+                    )}
+                    {!hasDeadline && (
+                      <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
+                    )}
+                    {hasDeadline && (
+                      <div style={styles.objectiveProgressTrack}>
+                        <div style={{
+                          ...styles.objectiveProgressBar,
+                          width: `${Math.min(100, pct)}%`,
+                          background: pctColor,
+                        }} />
+                      </div>
+                    )}
+                    <span style={{ ...styles.objectivePct, color: objectiveGoals.length > 0 ? pctColor : theme.textFaint }}>{pct}%</span>
+                  </button>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          <div style={styles.collapsedSummary}>
+            {objectives.length} {objectives.length === 1 ? 'objective' : 'objectives'}
           </div>
         )}
       </div>
@@ -2008,137 +2052,163 @@ export default function App() {
       {/* Goals Section */}
       <div style={styles.goalsSection}>
         <div style={styles.sectionHeader}>
-          <span style={styles.sectionTitle}>Goals</span>
-          {!showAddForm && (
+          <div style={styles.sectionHeaderLeft}>
+            <button 
+              onClick={() => setGoalsExpanded(!goalsExpanded)} 
+              style={styles.collapseBtn}
+            >
+              {goalsExpanded ? '−' : '+'}
+            </button>
+            <span style={styles.sectionTitle}>Goals</span>
+          </div>
+          {goalsExpanded && !showAddForm && (
             <button onClick={() => setShowAddForm(true)} style={styles.sectionAddBtn}>+</button>
           )}
         </div>
         
-        {showAddForm && (
-          <div style={styles.addContainer}>
-            <div style={styles.addField}>
-              <label style={styles.addLabel}>Goal</label>
-              <input
-                type="text"
-                value={newGoal}
-                onChange={(e) => setNewGoal(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. Exercise"
-                style={styles.input}
-                autoFocus
-              />
-            </div>
-            <div style={styles.addField}>
-              <label style={styles.addLabel}>Days/week</label>
-              <div style={styles.dayButtons}>
-                {[1, 2, 3, 4, 5, 6, 7].map(n => (
-                  <button
-                    key={n}
-                    onClick={() => setNewTarget(n)}
-                    style={{
-                      ...styles.dayBtn,
-                      ...(newTarget === n ? styles.dayBtnActive : styles.dayBtnInactive),
-                    }}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {objectives.length > 0 && (
-              <div style={styles.addField}>
-                <label style={styles.addLabel}>Objective (optional)</label>
-                <select
-                  value={newObjectiveId || ''}
-                  onChange={(e) => setNewObjectiveId(e.target.value || null)}
-                  style={styles.objectiveSelect}
-                >
-                  <option value="">None</option>
-                  {objectives.map(obj => (
-                    <option key={obj.id} value={obj.id}>{obj.name}</option>
-                  ))}
-                </select>
+        {goalsExpanded ? (
+          <>
+            {showAddForm && (
+              <div style={styles.addContainer}>
+                <div style={styles.addField}>
+                  <label style={styles.addLabel}>Goal</label>
+                  <input
+                    type="text"
+                    value={newGoal}
+                    onChange={(e) => setNewGoal(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="e.g. Exercise"
+                    style={styles.input}
+                    autoFocus
+                  />
+                </div>
+                <div style={styles.addField}>
+                  <label style={styles.addLabel}>Days/week</label>
+                  <div style={styles.dayButtons}>
+                    {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setNewTarget(n)}
+                        style={{
+                          ...styles.dayBtn,
+                          ...(newTarget === n ? styles.dayBtnActive : styles.dayBtnInactive),
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {objectives.length > 0 && (
+                  <div style={styles.addField}>
+                    <label style={styles.addLabel}>Objective (optional)</label>
+                    <select
+                      value={newObjectiveId || ''}
+                      onChange={(e) => setNewObjectiveId(e.target.value || null)}
+                      style={styles.objectiveSelect}
+                    >
+                      <option value="">None</option>
+                      {objectives.map(obj => (
+                        <option key={obj.id} value={obj.id}>{obj.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
+                <button onClick={handleCancelAdd} style={styles.cancelBtn}>×</button>
               </div>
             )}
-            <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
-            <button onClick={handleCancelAdd} style={styles.cancelBtn}>×</button>
+
+            {/* Table */}
+            <div style={styles.tableContainer}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.thGoal}>
+                      <select 
+                        value={weekOffset} 
+                        onChange={(e) => setWeekOffset(parseInt(e.target.value))}
+                        style={styles.weekSelectInline}
+                      >
+                        {weekOptions.map(opt => (
+                          <option key={opt.offset} value={opt.offset}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </th>
+                    {DAY_LABELS.map((day, i) => {
+                      const isToday = weekDates[i] === today;
+                      return (
+                        <th 
+                          key={i} 
+                          style={styles.thDay}
+                        >
+                          <div style={isToday ? styles.thDayToday : styles.thDayNormal}>{day}</div>
+                          <div style={{ 
+                            ...styles.thDate, 
+                            ...(isToday ? styles.thDateToday : styles.thDateNormal),
+                          }}>
+                            {formatDayDate(weekDates[i])}
+                          </div>
+                        </th>
+                      );
+                    })}
+                    <th style={styles.thPct}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {goals.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={styles.emptyRow}>
+                        No goals yet
+                      </td>
+                    </tr>
+                  ) : (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={goals.map(g => g.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {goals.map(goal => (
+                          <SortableRow
+                            key={goal.id}
+                            goal={goal}
+                            weekDates={weekDates}
+                            today={today}
+                            entries={entries}
+                            toggleEntry={toggleEntry}
+                            deleteGoal={deleteGoal}
+                            onEdit={handleEditGoal}
+                            styles={styles}
+                            theme={theme}
+                            thresholds={thresholds}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div style={styles.collapsedSummary}>
+            {goals.length} {goals.length === 1 ? 'goal' : 'goals'}
+            {goals.length > 0 && (() => {
+              const avgPct = Math.round(
+                goals.reduce((sum, goal) => {
+                  const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
+                  const target = goal.target || 7;
+                  return sum + (achieved / target) * 100;
+                }, 0) / goals.length
+              );
+              return ` • ${avgPct}% avg`;
+            })()}
           </div>
         )}
-
-      {/* Table */}
-      <div style={styles.tableContainer}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.thGoal}>
-                <select 
-                  value={weekOffset} 
-                  onChange={(e) => setWeekOffset(parseInt(e.target.value))}
-                  style={styles.weekSelectInline}
-                >
-                  {weekOptions.map(opt => (
-                    <option key={opt.offset} value={opt.offset}>{opt.label}</option>
-                  ))}
-                </select>
-              </th>
-              {DAY_LABELS.map((day, i) => {
-                const isToday = weekDates[i] === today;
-                return (
-                  <th 
-                    key={i} 
-                    style={styles.thDay}
-                  >
-                    <div style={isToday ? styles.thDayToday : styles.thDayNormal}>{day}</div>
-                    <div style={{ 
-                      ...styles.thDate, 
-                      ...(isToday ? styles.thDateToday : styles.thDateNormal),
-                    }}>
-                      {formatDayDate(weekDates[i])}
-                    </div>
-                  </th>
-                );
-              })}
-              <th style={styles.thPct}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {goals.length === 0 ? (
-              <tr>
-                <td colSpan={9} style={styles.emptyRow}>
-                  No goals yet
-                </td>
-              </tr>
-            ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={goals.map(g => g.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {goals.map(goal => (
-                    <SortableRow
-                      key={goal.id}
-                      goal={goal}
-                      weekDates={weekDates}
-                      today={today}
-                      entries={entries}
-                      toggleEntry={toggleEntry}
-                      deleteGoal={deleteGoal}
-                      onEdit={handleEditGoal}
-                      styles={styles}
-                      theme={theme}
-                      thresholds={thresholds}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            )}
-          </tbody>
-        </table>
-      </div>
       </div>
 
       {/* Performance Toggle */}
