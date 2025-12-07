@@ -766,6 +766,11 @@ const getStyles = (theme) => ({
     color: theme.textFaint,
     margin: '0 0 8px 0',
   },
+  modalHintInline: {
+    fontSize: '11px',
+    color: theme.textFaint,
+    margin: '2px 0 0 0',
+  },
   modalInput: {
     width: '100%',
     padding: '10px 12px',
@@ -979,7 +984,7 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
 // MILESTONE CARD COMPONENT
 // ============================================
 
-function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thresholds }) {
+function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thresholds, milestoneColors }) {
   const today = getToday();
   
   const { daysRemaining, overallPct } = useMemo(() => {
@@ -1017,6 +1022,7 @@ function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thres
   }, [milestone, goals, entries, today]);
 
   const getPctColor = (pct) => {
+    if (!milestoneColors) return theme.textMuted;
     if (pct >= thresholds.green) return theme.success;
     if (pct >= thresholds.yellow) return theme.warning;
     return theme.danger;
@@ -1048,7 +1054,7 @@ function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thres
 // MILESTONES SECTION COMPONENT
 // ============================================
 
-function MilestonesSection({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds }) {
+function MilestonesSection({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds, milestoneColors }) {
   return (
     <div style={styles.milestonesSection}>
       {milestones.map(milestone => (
@@ -1061,6 +1067,7 @@ function MilestonesSection({ milestones, goals, entries, onEdit, onAdd, styles, 
           styles={styles}
           theme={theme}
           thresholds={thresholds}
+          milestoneColors={milestoneColors}
         />
       ))}
       <button onClick={onAdd} style={styles.addMilestoneBtn}>
@@ -1159,11 +1166,15 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
   const [thresholdYellow, setThresholdYellow] = useState(
     settings.threshold_yellow || '50'
   );
+  const [milestoneColors, setMilestoneColors] = useState(
+    settings.milestone_colors !== 'false'
+  );
 
   const handleSave = () => {
     onSave('tracking_start_date', trackingStartDate);
     onSave('threshold_green', thresholdGreen);
     onSave('threshold_yellow', thresholdYellow);
+    onSave('milestone_colors', milestoneColors ? 'true' : 'false');
     onClose();
   };
 
@@ -1224,6 +1235,29 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
             </div>
           </div>
         </div>
+
+        <div style={styles.modalField}>
+          <div style={styles.toggleContainer}>
+            <div>
+              <label style={styles.modalLabel}>Color milestone progress</label>
+              <p style={styles.modalHintInline}>
+                Apply threshold colors to milestone percentages
+              </p>
+            </div>
+            <div 
+              onClick={() => setMilestoneColors(!milestoneColors)}
+              style={{
+                ...styles.toggleSwitch,
+                ...(milestoneColors ? styles.toggleSwitchOn : styles.toggleSwitchOff),
+              }}
+            >
+              <div style={{
+                ...styles.toggleKnob,
+                ...(milestoneColors ? styles.toggleKnobOn : styles.toggleKnobOff),
+              }} />
+            </div>
+          </div>
+        </div>
         
         <div style={styles.modalActions}>
           <div style={{ flex: 1 }} />
@@ -1262,6 +1296,8 @@ export default function App() {
     green: parseInt(settings.threshold_green) || 80,
     yellow: parseInt(settings.threshold_yellow) || 50,
   }), [settings.threshold_green, settings.threshold_yellow]);
+  
+  const milestoneColors = settings.milestone_colors !== 'false';
   
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
@@ -1386,6 +1422,7 @@ export default function App() {
         styles={styles}
         theme={theme}
         thresholds={thresholds}
+        milestoneColors={milestoneColors}
       />
 
       {/* Add Goal */}
