@@ -442,11 +442,32 @@ const useGoals = () => {
     }
   }, []);
 
+  const updateGoal = useCallback(async (goalData, goalId) => {
+    if (!goalId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('goals')
+        .update({
+          name: goalData.name,
+          target: goalData.target,
+          objective_id: goalData.objective_id
+        })
+        .eq('id', goalId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      setGoals(prev => prev.map(g => g.id === goalId ? data : g));
+    } catch (err) {
+      console.error('Error updating goal:', err);
+    }
+  }, []);
+
   return { 
-    goals, entries, milestones, objectives, settings, isLoaded, 
-    addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveMilestone, deleteMilestone, saveSetting,
-    saveObjective, deleteObjective, updateGoalObjective
+    goals, entries, objectives, settings, isLoaded, 
+    addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
+    saveSetting, saveObjective, deleteObjective, updateGoalObjective
   };
 };
 
@@ -798,6 +819,7 @@ const getStyles = (theme) => ({
     color: theme.textSecondary,
     flex: 1,
     whiteSpace: 'nowrap',
+    cursor: 'pointer',
   },
   goalTarget: {
     color: theme.textFaint,
@@ -953,6 +975,40 @@ const getStyles = (theme) => ({
     background: theme.bg,
     color: theme.text,
   },
+  modalSelect: {
+    width: '100%',
+    padding: '10px 12px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '6px',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box',
+    background: theme.bg,
+    color: theme.text,
+    cursor: 'pointer',
+  },
+  dayButtonsModal: {
+    display: 'flex',
+    gap: '6px',
+  },
+  dayBtnModal: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    border: 'none',
+  },
+  dayBtnModalActive: {
+    background: theme.checkboxChecked,
+    color: theme.bg,
+  },
+  dayBtnModalInactive: {
+    background: theme.bgSecondary,
+    color: theme.textMuted,
+    border: `1px solid ${theme.border}`,
+  },
   modalActions: {
     display: 'flex',
     gap: '10px',
@@ -1064,7 +1120,7 @@ const getStyles = (theme) => ({
 // SORTABLE ROW COMPONENT
 // ============================================
 
-function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, styles, theme, thresholds }) {
+function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, onEdit, styles, theme, thresholds }) {
   const [isHovered, setIsHovered] = useState(false);
   
   const {
@@ -1110,7 +1166,10 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
         >
           ⋮⋮
         </span>
-        <span style={styles.goalText}>
+        <span 
+          onClick={() => onEdit(goal)}
+          style={styles.goalText}
+        >
           {goal.name}
           <span style={styles.goalTarget}>({target}x)</span>
         </span>
@@ -1415,6 +1474,87 @@ function ObjectiveEditor({ objective, onSave, onDelete, onClose, styles }) {
 }
 
 // ============================================
+// GOAL EDITOR MODAL
+// ============================================
+
+function GoalEditor({ goal, objectives, onSave, onDelete, onClose, styles }) {
+  const [name, setName] = useState(goal?.name || '');
+  const [target, setTarget] = useState(goal?.target || 7);
+  const [objectiveId, setObjectiveId] = useState(goal?.objective_id || '');
+
+  const handleSave = () => {
+    if (!name.trim()) return;
+    onSave({
+      name: name.trim(),
+      target,
+      objective_id: objectiveId || null
+    }, goal?.id);
+    onClose();
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>Edit Goal</h3>
+        
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Exercise"
+            style={styles.modalInput}
+            autoFocus
+          />
+        </div>
+
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Days per week</label>
+          <div style={styles.dayButtonsModal}>
+            {[1, 2, 3, 4, 5, 6, 7].map(n => (
+              <button
+                key={n}
+                onClick={() => setTarget(n)}
+                style={{
+                  ...styles.dayBtnModal,
+                  ...(target === n ? styles.dayBtnModalActive : styles.dayBtnModalInactive),
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Objective (optional)</label>
+          <select
+            value={objectiveId || ''}
+            onChange={e => setObjectiveId(e.target.value || null)}
+            style={styles.modalSelect}
+          >
+            <option value="">None</option>
+            {objectives.map(obj => (
+              <option key={obj.id} value={obj.id}>{obj.name}</option>
+            ))}
+          </select>
+        </div>
+        
+        <div style={styles.modalActions}>
+          <button onClick={() => { onDelete(goal.id); onClose(); }} style={styles.modalDeleteBtn}>
+            Delete
+          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={styles.modalCancelBtn}>Cancel</button>
+          <button onClick={handleSave} style={styles.modalSaveBtn}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS MODAL
 // ============================================
 
@@ -1511,8 +1651,8 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 export default function App() {
   const { 
     goals, entries, objectives, settings, isLoaded, 
-    addGoal, deleteGoal, toggleEntry, reorderGoals,
-    saveSetting, saveObjective, deleteObjective, updateGoalObjective
+    addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
+    saveSetting, saveObjective, deleteObjective
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -1522,6 +1662,8 @@ export default function App() {
   const [showPerformance, setShowPerformance] = useState(false);
   const [editingObjective, setEditingObjective] = useState(null);
   const [showObjectiveEditor, setShowObjectiveEditor] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
+  const [showGoalEditor, setShowGoalEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
   const darkMode = settings.dark_mode === 'true';
@@ -1620,6 +1762,11 @@ export default function App() {
   const handleAddObjective = () => {
     setEditingObjective(null);
     setShowObjectiveEditor(true);
+  };
+
+  const handleEditGoal = (goal) => {
+    setEditingGoal(goal);
+    setShowGoalEditor(true);
   };
 
   const handleToggleDarkMode = () => {
@@ -1856,6 +2003,7 @@ export default function App() {
                       entries={entries}
                       toggleEntry={toggleEntry}
                       deleteGoal={deleteGoal}
+                      onEdit={handleEditGoal}
                       styles={styles}
                       theme={theme}
                       thresholds={thresholds}
@@ -1957,6 +2105,18 @@ export default function App() {
           onSave={saveObjective}
           onDelete={deleteObjective}
           onClose={() => setShowObjectiveEditor(false)}
+          styles={styles}
+        />
+      )}
+
+      {/* Goal Editor Modal */}
+      {showGoalEditor && (
+        <GoalEditor
+          goal={editingGoal}
+          objectives={objectives}
+          onSave={updateGoal}
+          onDelete={deleteGoal}
+          onClose={() => setShowGoalEditor(false)}
           styles={styles}
         />
       )}
