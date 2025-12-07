@@ -429,13 +429,32 @@ const getStyles = (theme) => ({
   milestonesSection: {
     marginBottom: '20px',
   },
-  milestonesHeader: {
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '10px',
+  },
+  sectionTitle: {
     fontSize: '11px',
     fontWeight: '600',
     color: theme.textFaint,
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
-    marginBottom: '10px',
+  },
+  sectionAddBtn: {
+    width: '22px',
+    height: '22px',
+    borderRadius: '6px',
+    border: `1px solid ${theme.border}`,
+    background: theme.bg,
+    color: theme.textMuted,
+    fontSize: '14px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
   milestonesList: {
     display: 'flex',
@@ -488,27 +507,8 @@ const getStyles = (theme) => ({
     minWidth: '36px',
     textAlign: 'right',
   },
-  addMilestoneBtn: {
-    padding: '12px 16px',
-    background: 'transparent',
-    border: `1px dashed ${theme.borderDashed}`,
-    borderRadius: '10px',
-    fontSize: '13px',
-    color: theme.textFaint,
-    cursor: 'pointer',
-    width: '100%',
-    marginTop: '10px',
-  },
-  addGoalBtn: {
-    padding: '8px 14px',
-    background: 'transparent',
-    color: theme.textFaint,
-    border: `1px dashed ${theme.borderDashed}`,
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-    marginBottom: '16px',
-    width: '100%',
+  goalsSection: {
+    marginBottom: '0',
   },
   addContainer: {
     display: 'flex',
@@ -1072,25 +1072,27 @@ function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thres
 function MilestonesSection({ milestones, goals, entries, onEdit, onAdd, styles, theme, thresholds, milestoneColors }) {
   return (
     <div style={styles.milestonesSection}>
-      <div style={styles.milestonesHeader}>Milestones</div>
-      <div style={styles.milestonesList}>
-        {milestones.map(milestone => (
-          <MilestoneCard
-            key={milestone.id}
-            milestone={milestone}
-            goals={goals}
-            entries={entries}
-            onEdit={onEdit}
-            styles={styles}
-            theme={theme}
-            thresholds={thresholds}
-            milestoneColors={milestoneColors}
-          />
-        ))}
+      <div style={styles.sectionHeader}>
+        <span style={styles.sectionTitle}>Milestones</span>
+        <button onClick={onAdd} style={styles.sectionAddBtn}>+</button>
       </div>
-      <button onClick={onAdd} style={styles.addMilestoneBtn}>
-        + Add Milestone
-      </button>
+      {milestones.length > 0 && (
+        <div style={styles.milestonesList}>
+          {milestones.map(milestone => (
+            <MilestoneCard
+              key={milestone.id}
+              milestone={milestone}
+              goals={goals}
+              entries={entries}
+              onEdit={onEdit}
+              styles={styles}
+              theme={theme}
+              thresholds={thresholds}
+              milestoneColors={milestoneColors}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1420,7 +1422,7 @@ export default function App() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.title}>Goals</h1>
+        <h1 style={styles.title}>Goal Tracker</h1>
         <button 
           onClick={handleToggleDarkMode}
           style={styles.darkModeBtn}
@@ -1443,46 +1445,50 @@ export default function App() {
         milestoneColors={milestoneColors}
       />
 
-      {/* Add Goal */}
-      {!showAddForm ? (
-        <button onClick={() => setShowAddForm(true)} style={styles.addGoalBtn}>
-          + Add Goal
-        </button>
-      ) : (
-        <div style={styles.addContainer}>
-          <div style={styles.addField}>
-            <label style={styles.addLabel}>Goal</label>
-            <input
-              type="text"
-              value={newGoal}
-              onChange={(e) => setNewGoal(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. Exercise"
-              style={styles.input}
-              autoFocus
-            />
-          </div>
-          <div style={styles.addField}>
-            <label style={styles.addLabel}>Days/week</label>
-            <div style={styles.dayButtons}>
-              {[1, 2, 3, 4, 5, 6, 7].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setNewTarget(n)}
-                  style={{
-                    ...styles.dayBtn,
-                    ...(newTarget === n ? styles.dayBtnActive : styles.dayBtnInactive),
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
-          <button onClick={handleCancelAdd} style={styles.cancelBtn}>×</button>
+      {/* Goals Section */}
+      <div style={styles.goalsSection}>
+        <div style={styles.sectionHeader}>
+          <span style={styles.sectionTitle}>Goals</span>
+          {!showAddForm && (
+            <button onClick={() => setShowAddForm(true)} style={styles.sectionAddBtn}>+</button>
+          )}
         </div>
-      )}
+        
+        {showAddForm && (
+          <div style={styles.addContainer}>
+            <div style={styles.addField}>
+              <label style={styles.addLabel}>Goal</label>
+              <input
+                type="text"
+                value={newGoal}
+                onChange={(e) => setNewGoal(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="e.g. Exercise"
+                style={styles.input}
+                autoFocus
+              />
+            </div>
+            <div style={styles.addField}>
+              <label style={styles.addLabel}>Days/week</label>
+              <div style={styles.dayButtons}>
+                {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setNewTarget(n)}
+                    style={{
+                      ...styles.dayBtn,
+                      ...(newTarget === n ? styles.dayBtnActive : styles.dayBtnInactive),
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={handleAddGoal} style={styles.addBtn}>Add</button>
+            <button onClick={handleCancelAdd} style={styles.cancelBtn}>×</button>
+          </div>
+        )}
 
       {/* Table */}
       <div style={styles.tableContainer}>
@@ -1556,6 +1562,7 @@ export default function App() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Performance Toggle */}
