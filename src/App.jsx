@@ -680,6 +680,10 @@ const getStyles = (theme, isDark = false) => ({
     color: theme.textFaint,
     padding: '8px 0',
   },
+  objectiveCardWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
   objectiveCard: {
     display: 'flex',
     alignItems: 'center',
@@ -694,9 +698,10 @@ const getStyles = (theme, isDark = false) => ({
     width: '100%',
     boxSizing: 'border-box',
   },
-  objectiveIcon: {
+  objectiveExpandIcon: {
     fontSize: '14px',
-    color: theme.textMuted,
+    color: theme.textFaint,
+    transition: 'transform 0.2s ease',
   },
   objectiveName: {
     fontSize: '13px',
@@ -730,6 +735,65 @@ const getStyles = (theme, isDark = false) => ({
     fontWeight: '600',
     minWidth: '32px',
     textAlign: 'right',
+  },
+  objectiveExpanded: {
+    background: theme.bgSecondary,
+    border: `1px solid ${theme.border}`,
+    borderTop: 'none',
+    borderBottomLeftRadius: '8px',
+    borderBottomRightRadius: '8px',
+    padding: '12px 14px',
+  },
+  objectiveNoGoals: {
+    fontSize: '12px',
+    color: theme.textFaint,
+    fontStyle: 'italic',
+  },
+  objectiveGoalsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  objectiveGoalRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  objectiveGoalName: {
+    fontSize: '12px',
+    color: theme.textSecondary,
+    flex: 1,
+  },
+  objectiveGoalTarget: {
+    fontSize: '10px',
+    color: theme.textFaint,
+  },
+  objectiveGoalProgressTrack: {
+    width: '50px',
+    height: '4px',
+    background: theme.border,
+    borderRadius: '2px',
+    overflow: 'hidden',
+  },
+  objectiveGoalProgressBar: {
+    height: '100%',
+    borderRadius: '2px',
+  },
+  objectiveGoalPct: {
+    fontSize: '11px',
+    fontWeight: '500',
+    minWidth: '28px',
+    textAlign: 'right',
+  },
+  objectiveEditBtn: {
+    marginTop: '12px',
+    padding: '6px 12px',
+    background: 'transparent',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '4px',
+    fontSize: '12px',
+    color: theme.textMuted,
+    cursor: 'pointer',
   },
   objectiveSelect: {
     padding: '7px 10px',
@@ -1314,6 +1378,143 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
 }
 
 // ============================================
+// OBJECTIVE CARD COMPONENT
+// ============================================
+
+function ObjectiveCard({ 
+  objective, 
+  goals, 
+  entries, 
+  weekDates, 
+  today, 
+  isExpanded, 
+  onToggle, 
+  onEdit, 
+  styles, 
+  theme, 
+  thresholds 
+}) {
+  const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
+  const hasDeadline = objective.target_date;
+  const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
+  
+  // Calculate progress
+  let pct = 0;
+  if (hasDeadline && objective.start_date && objectiveGoals.length > 0) {
+    const startWeek = getWeekStart(objective.start_date);
+    const currentWeek = getWeekStart(today);
+    const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
+    
+    let totalExpected = 0;
+    let totalAchieved = 0;
+    
+    objectiveGoals.forEach(goal => {
+      const target = goal.target || 7;
+      totalExpected += target * weeksCount;
+      
+      let currentDate = new Date(objective.start_date);
+      const endDate = new Date(today);
+      
+      while (currentDate <= endDate) {
+        const dateStr = getDateString(currentDate);
+        if (entries[`${goal.id}-${dateStr}`]) {
+          totalAchieved++;
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+    
+    pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
+  } else {
+    const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
+    const totalAchieved = objectiveGoals.reduce((sum, g) => {
+      return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
+    }, 0);
+    pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
+  }
+  
+  const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
+
+  // Calculate individual goal progress for expanded view
+  const getGoalPct = (goal) => {
+    const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
+    const target = goal.target || 7;
+    return Math.round((achieved / target) * 100);
+  };
+
+  return (
+    <div style={styles.objectiveCardWrapper}>
+      <button 
+        onClick={onToggle}
+        style={{
+          ...styles.objectiveCard,
+          borderLeftColor: hasDeadline ? pctColor : theme.border,
+          borderBottomLeftRadius: isExpanded ? 0 : '8px',
+          borderBottomRightRadius: isExpanded ? 0 : '8px',
+        }}
+      >
+        <span style={{
+          ...styles.objectiveExpandIcon,
+          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+        }}>›</span>
+        <span style={styles.objectiveName}>{objective.name}</span>
+        {hasDeadline && (
+          <span style={styles.objectiveDays}>{daysRemaining}d</span>
+        )}
+        {!hasDeadline && (
+          <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
+        )}
+        {hasDeadline && (
+          <div style={styles.objectiveProgressTrack}>
+            <div style={{
+              ...styles.objectiveProgressBar,
+              width: `${Math.min(100, pct)}%`,
+              background: pctColor,
+            }} />
+          </div>
+        )}
+        <span style={{ ...styles.objectivePct, color: objectiveGoals.length > 0 ? pctColor : theme.textFaint }}>{pct}%</span>
+      </button>
+      
+      {isExpanded && (
+        <div style={styles.objectiveExpanded}>
+          {objectiveGoals.length === 0 ? (
+            <div style={styles.objectiveNoGoals}>No goals assigned</div>
+          ) : (
+            <div style={styles.objectiveGoalsList}>
+              {objectiveGoals.map(goal => {
+                const goalPct = getGoalPct(goal);
+                const goalPctColor = goalPct >= thresholds.green ? theme.success : goalPct >= thresholds.yellow ? theme.warning : theme.danger;
+                return (
+                  <div key={goal.id} style={styles.objectiveGoalRow}>
+                    <span style={styles.objectiveGoalName}>{goal.name}</span>
+                    <span style={styles.objectiveGoalTarget}>({goal.target}x)</span>
+                    <div style={styles.objectiveGoalProgressTrack}>
+                      <div style={{
+                        ...styles.objectiveGoalProgressBar,
+                        width: `${Math.min(100, goalPct)}%`,
+                        background: goalPctColor,
+                      }} />
+                    </div>
+                    <span style={{ ...styles.objectiveGoalPct, color: goalPctColor }}>{goalPct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button 
+            onClick={(e) => { e.stopPropagation(); onEdit(objective); }}
+            style={styles.objectiveEditBtn}
+          >
+            ✏️ Edit
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
 // MILESTONE CARD COMPONENT
 // ============================================
 
@@ -1817,6 +2018,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [objectivesExpanded, setObjectivesExpanded] = useState(true);
   const [goalsExpanded, setGoalsExpanded] = useState(true);
+  const [expandedObjectiveId, setExpandedObjectiveId] = useState(null);
   
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
@@ -1966,80 +2168,24 @@ export default function App() {
         {objectivesExpanded ? (
           objectives.length > 0 && (
             <div style={styles.objectivesList}>
-              {objectives.map(objective => {
-                const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
-                const hasDeadline = objective.target_date;
-                const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
-                
-                // Calculate progress
-                let pct = 0;
-                if (hasDeadline && objective.start_date && objectiveGoals.length > 0) {
-                  // Use milestone-style calculation for objectives with deadlines
-                  const startWeek = getWeekStart(objective.start_date);
-                  const currentWeek = getWeekStart(today);
-                  const weeksCount = Math.max(1, Math.floor(daysBetween(startWeek, currentWeek) / 7) + 1);
-                  
-                  let totalExpected = 0;
-                  let totalAchieved = 0;
-                  
-                  objectiveGoals.forEach(goal => {
-                    const target = goal.target || 7;
-                    totalExpected += target * weeksCount;
-                    
-                    let currentDate = new Date(objective.start_date);
-                    const endDate = new Date(today);
-                    
-                    while (currentDate <= endDate) {
-                      const dateStr = getDateString(currentDate);
-                      if (entries[`${goal.id}-${dateStr}`]) {
-                        totalAchieved++;
-                      }
-                      currentDate.setDate(currentDate.getDate() + 1);
-                    }
-                  });
-                  
-                  pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
-                } else {
-                  // Simple weekly calculation for objectives without deadlines
-                  const totalTarget = objectiveGoals.reduce((sum, g) => sum + (g.target || 7), 0);
-                  const totalAchieved = objectiveGoals.reduce((sum, g) => {
-                    return sum + weekDates.filter(d => entries[`${g.id}-${d}`]).length;
-                  }, 0);
-                  pct = totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
-                }
-                
-                const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
-                
-                return (
-                  <button 
-                    key={objective.id} 
-                    onClick={() => handleEditObjective(objective)}
-                    style={{
-                      ...styles.objectiveCard,
-                      borderLeftColor: hasDeadline ? pctColor : theme.border,
-                    }}
-                  >
-                    <span style={styles.objectiveIcon}>◎</span>
-                    <span style={styles.objectiveName}>{objective.name}</span>
-                    {hasDeadline && (
-                      <span style={styles.objectiveDays}>{daysRemaining}d</span>
-                    )}
-                    {!hasDeadline && (
-                      <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
-                    )}
-                    {hasDeadline && (
-                      <div style={styles.objectiveProgressTrack}>
-                        <div style={{
-                          ...styles.objectiveProgressBar,
-                          width: `${Math.min(100, pct)}%`,
-                          background: pctColor,
-                        }} />
-                      </div>
-                    )}
-                    <span style={{ ...styles.objectivePct, color: objectiveGoals.length > 0 ? pctColor : theme.textFaint }}>{pct}%</span>
-                  </button>
-                );
-              })}
+              {objectives.map(objective => (
+                <ObjectiveCard
+                  key={objective.id}
+                  objective={objective}
+                  goals={goals}
+                  entries={entries}
+                  weekDates={weekDates}
+                  today={today}
+                  isExpanded={expandedObjectiveId === objective.id}
+                  onToggle={() => setExpandedObjectiveId(
+                    expandedObjectiveId === objective.id ? null : objective.id
+                  )}
+                  onEdit={handleEditObjective}
+                  styles={styles}
+                  theme={theme}
+                  thresholds={thresholds}
+                />
+              ))}
             </div>
           )
         ) : (
