@@ -517,7 +517,11 @@ const useGoals = () => {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .insert({ name: name.trim(), objective_id: objectiveId })
+        .insert({ 
+          name: name.trim(), 
+          objective_id: objectiveId,
+          start_date: getToday()
+        })
         .select()
         .single();
       
@@ -525,6 +529,29 @@ const useGoals = () => {
       setTasks(prev => [...prev, data]);
     } catch (err) {
       console.error('Error adding task:', err);
+    }
+  }, []);
+
+  const updateTask = useCallback(async (taskData, taskId) => {
+    if (!taskId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .update({
+          name: taskData.name,
+          objective_id: taskData.objective_id,
+          start_date: taskData.start_date,
+          target_date: taskData.target_date
+        })
+        .eq('id', taskId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      setTasks(prev => prev.map(t => t.id === taskId ? data : t));
+    } catch (err) {
+      console.error('Error updating task:', err);
     }
   }, []);
 
@@ -595,7 +622,7 @@ const useGoals = () => {
     goals, entries, objectives, tasks, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
-    addTask, toggleTaskCheck, archiveTask, deleteTask
+    addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask
   };
 };
 
@@ -966,6 +993,7 @@ const getStyles = (theme, isDark = false) => ({
     fontSize: '13px',
     color: theme.text,
     flex: 1,
+    cursor: 'pointer',
   },
   taskNameChecked: {
     textDecoration: 'line-through',
@@ -977,6 +1005,10 @@ const getStyles = (theme, isDark = false) => ({
     background: theme.border,
     padding: '2px 6px',
     borderRadius: '3px',
+  },
+  taskDays: {
+    fontSize: '11px',
+    color: theme.textFaint,
   },
   taskArchiveBtn: {
     fontSize: '11px',
@@ -2190,6 +2222,93 @@ function GoalEditor({ goal, objectives, onSave, onDelete, onClose, styles }) {
 }
 
 // ============================================
+// TASK EDITOR MODAL
+// ============================================
+
+function TaskEditor({ task, objectives, onSave, onDelete, onClose, styles }) {
+  const [name, setName] = useState(task?.name || '');
+  const [objectiveId, setObjectiveId] = useState(task?.objective_id || '');
+  const [startDate, setStartDate] = useState(task?.start_date || getToday());
+  const [targetDate, setTargetDate] = useState(task?.target_date || '');
+
+  const handleSave = () => {
+    if (!name.trim()) return;
+    onSave({
+      name: name.trim(),
+      objective_id: objectiveId || null,
+      start_date: startDate,
+      target_date: targetDate || null
+    }, task?.id);
+    onClose();
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>Edit Task</h3>
+        
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Take son to football game"
+            style={styles.modalInput}
+            autoFocus
+          />
+        </div>
+
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Objective (optional)</label>
+          <select
+            value={objectiveId || ''}
+            onChange={e => setObjectiveId(e.target.value || null)}
+            style={styles.modalSelect}
+          >
+            <option value="">None</option>
+            {objectives.map(obj => (
+              <option key={obj.id} value={obj.id}>{obj.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={styles.modalRow}>
+          <div style={styles.modalField}>
+            <label style={styles.modalLabel}>Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              style={styles.modalInput}
+            />
+          </div>
+          
+          <div style={styles.modalField}>
+            <label style={styles.modalLabel}>Target Date (optional)</label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+              style={styles.modalInput}
+            />
+          </div>
+        </div>
+        
+        <div style={styles.modalActions}>
+          <button onClick={() => { onDelete(task.id); onClose(); }} style={styles.modalDeleteBtn}>
+            Delete
+          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={styles.modalCancelBtn}>Cancel</button>
+          <button onClick={handleSave} style={styles.modalSaveBtn}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS MODAL
 // ============================================
 
@@ -2288,7 +2407,7 @@ export default function App() {
     goals, entries, objectives, tasks, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
-    addTask, toggleTaskCheck, archiveTask, deleteTask
+    addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -2300,6 +2419,8 @@ export default function App() {
   const [showObjectiveEditor, setShowObjectiveEditor] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [showGoalEditor, setShowGoalEditor] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [showTaskEditor, setShowTaskEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [objectivesExpanded, setObjectivesExpanded] = useState(true);
   const [tasksExpanded, setTasksExpanded] = useState(true);
@@ -2413,6 +2534,11 @@ export default function App() {
   const handleEditGoal = (goal) => {
     setEditingGoal(goal);
     setShowGoalEditor(true);
+  };
+
+  const handleEditTask = (task) => {
+    setEditingTask(task);
+    setShowTaskEditor(true);
   };
 
   const handleToggleDarkMode = () => {
@@ -2559,6 +2685,7 @@ export default function App() {
               <div style={styles.tasksList}>
                 {tasks.map(task => {
                   const objective = objectives.find(o => o.id === task.objective_id);
+                  const daysSinceStart = task.start_date ? daysBetween(task.start_date, today) : 0;
                   return (
                     <div key={task.id} style={styles.taskItem}>
                       <div 
@@ -2570,14 +2697,20 @@ export default function App() {
                       >
                         {task.checked && <span style={styles.taskCheckmark}>✓</span>}
                       </div>
-                      <span style={{
-                        ...styles.taskName,
-                        ...(task.checked ? styles.taskNameChecked : {}),
-                      }}>
+                      <span 
+                        onClick={() => handleEditTask(task)}
+                        style={{
+                          ...styles.taskName,
+                          ...(task.checked ? styles.taskNameChecked : {}),
+                        }}
+                      >
                         {task.name}
                       </span>
                       {objective && (
                         <span style={styles.taskObjectiveTag}>◎ {objective.name}</span>
+                      )}
+                      {!task.checked && daysSinceStart > 0 && (
+                        <span style={styles.taskDays}>({daysSinceStart}d)</span>
                       )}
                       {task.checked && (
                         <button 
@@ -2933,6 +3066,18 @@ export default function App() {
           onSave={updateGoal}
           onDelete={deleteGoal}
           onClose={() => setShowGoalEditor(false)}
+          styles={styles}
+        />
+      )}
+
+      {/* Task Editor Modal */}
+      {showTaskEditor && (
+        <TaskEditor
+          task={editingTask}
+          objectives={objectives}
+          onSave={updateTask}
+          onDelete={deleteTask}
+          onClose={() => setShowTaskEditor(false)}
           styles={styles}
         />
       )}
