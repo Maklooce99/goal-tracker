@@ -143,6 +143,7 @@ const useGoals = () => {
   const [entries, setEntries] = useState({});
   const [milestones, setMilestones] = useState([]);
   const [objectives, setObjectives] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [settings, setSettings] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -183,11 +184,22 @@ const useGoals = () => {
         const { data: objectivesData, error: objectivesError } = await supabase
           .from('objective')
           .select('*')
+          .is('completed_at', null)
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: true });
         
         if (objectivesError) {
           console.error('Objectives error:', objectivesError);
+        }
+
+        const { data: tasksData, error: tasksError } = await supabase
+          .from('tasks')
+          .select('*')
+          .is('completed_at', null)
+          .order('created_at', { ascending: true });
+        
+        if (tasksError) {
+          console.error('Tasks error:', tasksError);
         }
         
         const entriesMap = {};
@@ -204,6 +216,7 @@ const useGoals = () => {
         setEntries(entriesMap);
         setMilestones(milestonesData || []);
         setObjectives(objectivesData || []);
+        setTasks(tasksData || []);
         setSettings(settingsMap);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -497,10 +510,92 @@ const useGoals = () => {
     }
   }, []);
 
+  // Task functions
+  const addTask = useCallback(async (name, objectiveId = null) => {
+    if (!name?.trim()) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({ name: name.trim(), objective_id: objectiveId })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      setTasks(prev => [...prev, data]);
+    } catch (err) {
+      console.error('Error adding task:', err);
+    }
+  }, []);
+
+  const toggleTaskCheck = useCallback(async (taskId, isChecked) => {
+    try {
+      // Just toggle the visual check state - don't archive yet
+      setTasks(prev => prev.map(t => 
+        t.id === taskId ? { ...t, checked: isChecked } : t
+      ));
+    } catch (err) {
+      console.error('Error toggling task:', err);
+    }
+  }, []);
+
+  const archiveTask = useCallback(async (taskId) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('id', taskId);
+      
+      if (error) throw error;
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+    } catch (err) {
+      console.error('Error archiving task:', err);
+    }
+  }, []);
+
+  const deleteTask = useCallback(async (taskId) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId);
+      
+      if (error) throw error;
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+    } catch (err) {
+      console.error('Error deleting task:', err);
+    }
+  }, []);
+
+  const completeObjective = useCallback(async (objectiveId) => {
+    try {
+      const { error } = await supabase
+        .from('objective')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('id', objectiveId);
+      
+      if (error) throw error;
+      
+      // Unlink goals from this objective
+      await supabase
+        .from('goals')
+        .update({ objective_id: null })
+        .eq('objective_id', objectiveId);
+      
+      setGoals(prev => prev.map(g => 
+        g.objective_id === objectiveId ? { ...g, objective_id: null } : g
+      ));
+      setObjectives(prev => prev.filter(o => o.id !== objectiveId));
+    } catch (err) {
+      console.error('Error completing objective:', err);
+    }
+  }, []);
+
   return { 
-    goals, entries, objectives, settings, isLoaded, 
+    goals, entries, objectives, tasks, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
-    saveSetting, saveObjective, deleteObjective, updateGoalObjective
+    saveSetting, saveObjective, deleteObjective, completeObjective,
+    addTask, toggleTaskCheck, archiveTask, deleteTask
   };
 };
 
@@ -797,6 +892,17 @@ const getStyles = (theme, isDark = false) => ({
     color: theme.textMuted,
     cursor: 'pointer',
   },
+  objectiveCompleteBtn: {
+    marginTop: '12px',
+    marginLeft: '8px',
+    padding: '6px 12px',
+    background: theme.success,
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    color: '#fff',
+    cursor: 'pointer',
+  },
   objectiveSelect: {
     padding: '7px 10px',
     border: `1px solid ${theme.border}`,
@@ -806,6 +912,161 @@ const getStyles = (theme, isDark = false) => ({
     color: theme.text,
     outline: 'none',
     minWidth: '120px',
+  },
+  // Tasks section
+  tasksSection: {
+    marginBottom: '20px',
+  },
+  tasksList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  taskItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px 12px',
+    background: theme.bgSecondary,
+    borderRadius: '6px',
+  },
+  taskCheckbox: {
+    width: '18px',
+    height: '18px',
+    borderRadius: '4px',
+    border: `2px solid ${theme.checkboxBorder}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    flexShrink: 0,
+    background: theme.bgCheckbox,
+  },
+  taskCheckboxChecked: {
+    background: theme.checkboxChecked,
+    borderColor: theme.checkboxChecked,
+  },
+  taskCheckmark: {
+    color: theme.bg,
+    fontSize: '11px',
+    fontWeight: '600',
+  },
+  taskName: {
+    fontSize: '13px',
+    color: theme.text,
+    flex: 1,
+  },
+  taskNameChecked: {
+    textDecoration: 'line-through',
+    color: theme.textMuted,
+  },
+  taskObjectiveTag: {
+    fontSize: '10px',
+    color: theme.textFaint,
+    background: theme.border,
+    padding: '2px 6px',
+    borderRadius: '3px',
+  },
+  taskArchiveBtn: {
+    fontSize: '11px',
+    color: theme.success,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: '4px',
+  },
+  taskDeleteBtn: {
+    fontSize: '14px',
+    color: theme.textFaint,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '2px 6px',
+    opacity: 0.5,
+  },
+  taskAddContainer: {
+    display: 'flex',
+    gap: '8px',
+    marginTop: '8px',
+    alignItems: 'center',
+  },
+  taskInput: {
+    flex: 1,
+    padding: '8px 10px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '5px',
+    fontSize: '13px',
+    outline: 'none',
+    background: theme.bg,
+    color: theme.text,
+  },
+  taskObjectiveSelect: {
+    padding: '8px 10px',
+    border: `1px solid ${theme.border}`,
+    borderRadius: '5px',
+    fontSize: '12px',
+    background: theme.bg,
+    color: theme.text,
+    outline: 'none',
+    maxWidth: '120px',
+  },
+  // Trophy case
+  trophySection: {
+    marginTop: '24px',
+    paddingTop: '16px',
+    borderTop: `1px solid ${theme.border}`,
+  },
+  trophyHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    cursor: 'pointer',
+    padding: '8px 0',
+  },
+  trophyIcon: {
+    fontSize: '16px',
+  },
+  trophyTitle: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: theme.textMuted,
+  },
+  trophyCount: {
+    fontSize: '11px',
+    color: theme.textFaint,
+  },
+  trophyExpandIcon: {
+    fontSize: '12px',
+    color: theme.textFaint,
+    marginLeft: 'auto',
+  },
+  trophyList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    marginTop: '8px',
+  },
+  trophyItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '8px 12px',
+    background: theme.bgSecondary,
+    borderRadius: '6px',
+  },
+  trophyItemIcon: {
+    fontSize: '12px',
+    color: theme.textFaint,
+  },
+  trophyItemName: {
+    fontSize: '13px',
+    color: theme.textSecondary,
+    flex: 1,
+  },
+  trophyItemDate: {
+    fontSize: '11px',
+    color: theme.textFaint,
   },
   goalsSection: {
     marginBottom: '0',
@@ -1391,7 +1652,8 @@ function ObjectiveCard({
   today, 
   isExpanded, 
   onToggle, 
-  onEdit, 
+  onEdit,
+  onComplete,
   styles, 
   theme, 
   thresholds 
@@ -1505,12 +1767,20 @@ function ObjectiveCard({
               })}
             </div>
           )}
-          <button 
-            onClick={(e) => { e.stopPropagation(); onEdit(objective); }}
-            style={styles.objectiveEditBtn}
-          >
-            ✏️ Edit
-          </button>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+            <button 
+              onClick={(e) => { e.stopPropagation(); onEdit(objective); }}
+              style={styles.objectiveEditBtn}
+            >
+              ✏️ Edit
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); onComplete(objective.id); }}
+              style={styles.objectiveCompleteBtn}
+            >
+              ✓ Complete
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -2004,9 +2274,10 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 
 export default function App() {
   const { 
-    goals, entries, objectives, settings, isLoaded, 
+    goals, entries, objectives, tasks, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
-    saveSetting, saveObjective, deleteObjective
+    saveSetting, saveObjective, deleteObjective, completeObjective,
+    addTask, toggleTaskCheck, archiveTask, deleteTask
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -2020,8 +2291,15 @@ export default function App() {
   const [showGoalEditor, setShowGoalEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [objectivesExpanded, setObjectivesExpanded] = useState(true);
+  const [tasksExpanded, setTasksExpanded] = useState(true);
   const [goalsExpanded, setGoalsExpanded] = useState(true);
   const [expandedObjectiveId, setExpandedObjectiveId] = useState(null);
+  const [trophyExpanded, setTrophyExpanded] = useState(false);
+  const [completedItems, setCompletedItems] = useState([]);
+  // Task add form state
+  const [showTaskAdd, setShowTaskAdd] = useState(false);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskObjectiveId, setNewTaskObjectiveId] = useState(null);
   
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
@@ -2130,6 +2408,54 @@ export default function App() {
     saveSetting('dark_mode', darkMode ? 'false' : 'true');
   };
 
+  const handleAddTask = () => {
+    if (newTaskName.trim()) {
+      addTask(newTaskName, newTaskObjectiveId);
+      setNewTaskName('');
+      setNewTaskObjectiveId(null);
+      setShowTaskAdd(false);
+    }
+  };
+
+  const handleTaskKeyDown = (e) => {
+    if (e.key === 'Enter') handleAddTask();
+    if (e.key === 'Escape') {
+      setShowTaskAdd(false);
+      setNewTaskName('');
+      setNewTaskObjectiveId(null);
+    }
+  };
+
+  // Load completed items for trophy case
+  useEffect(() => {
+    const loadCompleted = async () => {
+      try {
+        const { data: completedTasks } = await supabase
+          .from('tasks')
+          .select('*')
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false });
+
+        const { data: completedObjectives } = await supabase
+          .from('objective')
+          .select('*')
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false });
+
+        const items = [
+          ...(completedTasks || []).map(t => ({ ...t, type: 'task' })),
+          ...(completedObjectives || []).map(o => ({ ...o, type: 'objective' }))
+        ].sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+
+        setCompletedItems(items);
+      } catch (err) {
+        console.error('Error loading completed items:', err);
+      }
+    };
+    
+    if (isLoaded) loadCompleted();
+  }, [isLoaded, tasks, objectives]);
+
   // Set body background color for dark mode
   useEffect(() => {
     document.body.style.background = theme.bg;
@@ -2184,6 +2510,7 @@ export default function App() {
                     expandedObjectiveId === objective.id ? null : objective.id
                   )}
                   onEdit={handleEditObjective}
+                  onComplete={completeObjective}
                   styles={styles}
                   theme={theme}
                   thresholds={thresholds}
@@ -2194,6 +2521,113 @@ export default function App() {
         ) : (
           <div style={styles.collapsedSummary}>
             {objectives.length} {objectives.length === 1 ? 'objective' : 'objectives'}
+          </div>
+        )}
+      </div>
+
+      {/* Tasks Section */}
+      <div style={styles.tasksSection}>
+        <div style={styles.sectionHeader}>
+          <div style={styles.sectionHeaderLeft}>
+            <button 
+              onClick={() => setTasksExpanded(!tasksExpanded)} 
+              style={styles.collapseBtn}
+            >
+              {tasksExpanded ? '−' : '+'}
+            </button>
+            <span style={styles.sectionTitle}>Tasks</span>
+          </div>
+          {tasksExpanded && !showTaskAdd && (
+            <button onClick={() => setShowTaskAdd(true)} style={styles.sectionAddBtn}>+</button>
+          )}
+        </div>
+        
+        {tasksExpanded ? (
+          <>
+            {tasks.length > 0 && (
+              <div style={styles.tasksList}>
+                {tasks.map(task => {
+                  const objective = objectives.find(o => o.id === task.objective_id);
+                  return (
+                    <div key={task.id} style={styles.taskItem}>
+                      <div 
+                        onClick={() => toggleTaskCheck(task.id, !task.checked)}
+                        style={{
+                          ...styles.taskCheckbox,
+                          ...(task.checked ? styles.taskCheckboxChecked : {}),
+                        }}
+                      >
+                        {task.checked && <span style={styles.taskCheckmark}>✓</span>}
+                      </div>
+                      <span style={{
+                        ...styles.taskName,
+                        ...(task.checked ? styles.taskNameChecked : {}),
+                      }}>
+                        {task.name}
+                      </span>
+                      {objective && (
+                        <span style={styles.taskObjectiveTag}>◎ {objective.name}</span>
+                      )}
+                      {task.checked && (
+                        <button 
+                          onClick={() => archiveTask(task.id)}
+                          style={styles.taskArchiveBtn}
+                        >
+                          Archive
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => deleteTask(task.id)}
+                        style={styles.taskDeleteBtn}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            
+            {showTaskAdd && (
+              <div style={styles.taskAddContainer}>
+                <input
+                  type="text"
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  onKeyDown={handleTaskKeyDown}
+                  placeholder="New task..."
+                  style={styles.taskInput}
+                  autoFocus
+                />
+                {objectives.length > 0 && (
+                  <select
+                    value={newTaskObjectiveId || ''}
+                    onChange={(e) => setNewTaskObjectiveId(e.target.value || null)}
+                    style={styles.taskObjectiveSelect}
+                  >
+                    <option value="">No objective</option>
+                    {objectives.map(obj => (
+                      <option key={obj.id} value={obj.id}>{obj.name}</option>
+                    ))}
+                  </select>
+                )}
+                <button onClick={handleAddTask} style={styles.addBtn}>Add</button>
+                <button 
+                  onClick={() => { setShowTaskAdd(false); setNewTaskName(''); setNewTaskObjectiveId(null); }} 
+                  style={styles.cancelBtn}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            
+            {tasks.length === 0 && !showTaskAdd && (
+              <div style={styles.collapsedSummary}>No tasks yet</div>
+            )}
+          </>
+        ) : (
+          <div style={styles.collapsedSummary}>
+            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
           </div>
         )}
       </div>
@@ -2426,6 +2860,40 @@ export default function App() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Trophy Case */}
+      {completedItems.length > 0 && (
+        <div style={styles.trophySection}>
+          <div 
+            style={styles.trophyHeader}
+            onClick={() => setTrophyExpanded(!trophyExpanded)}
+          >
+            <span style={styles.trophyIcon}>🏆</span>
+            <span style={styles.trophyTitle}>Completed</span>
+            <span style={styles.trophyCount}>({completedItems.length})</span>
+            <span style={styles.trophyExpandIcon}>{trophyExpanded ? '▾' : '▸'}</span>
+          </div>
+          
+          {trophyExpanded && (
+            <div style={styles.trophyList}>
+              {completedItems.map(item => (
+                <div key={`${item.type}-${item.id}`} style={styles.trophyItem}>
+                  <span style={styles.trophyItemIcon}>
+                    {item.type === 'objective' ? '◎' : '◇'}
+                  </span>
+                  <span style={styles.trophyItemName}>{item.name}</span>
+                  <span style={styles.trophyItemDate}>
+                    {new Date(item.completed_at).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      year: 'numeric' 
+                    })}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
