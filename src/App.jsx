@@ -697,6 +697,17 @@ const getStyles = (theme, isDark = false) => ({
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
   },
+  sectionCount: {
+    fontSize: '11px',
+    fontWeight: '500',
+    color: theme.textFaint,
+  },
+  sectionAvg: {
+    fontSize: '11px',
+    fontWeight: '500',
+    color: theme.textMuted,
+    marginLeft: '4px',
+  },
   sectionAddBtn: {
     width: '22px',
     height: '22px',
@@ -2489,38 +2500,35 @@ export default function App() {
               {objectivesExpanded ? '−' : '+'}
             </button>
             <span style={styles.sectionTitle}>Objectives</span>
+            {!objectivesExpanded && objectives.length > 0 && (
+              <span style={styles.sectionCount}>({objectives.length})</span>
+            )}
           </div>
           {objectivesExpanded && (
             <button onClick={handleAddObjective} style={styles.sectionAddBtn}>+</button>
           )}
         </div>
-        {objectivesExpanded ? (
-          objectives.length > 0 && (
-            <div style={styles.objectivesList}>
-              {objectives.map(objective => (
-                <ObjectiveCard
-                  key={objective.id}
-                  objective={objective}
-                  goals={goals}
-                  entries={entries}
-                  weekDates={weekDates}
-                  today={today}
-                  isExpanded={expandedObjectiveId === objective.id}
-                  onToggle={() => setExpandedObjectiveId(
-                    expandedObjectiveId === objective.id ? null : objective.id
-                  )}
-                  onEdit={handleEditObjective}
-                  onComplete={completeObjective}
-                  styles={styles}
-                  theme={theme}
-                  thresholds={thresholds}
-                />
-              ))}
-            </div>
-          )
-        ) : (
-          <div style={styles.collapsedSummary}>
-            {objectives.length} {objectives.length === 1 ? 'objective' : 'objectives'}
+        {objectivesExpanded && objectives.length > 0 && (
+          <div style={styles.objectivesList}>
+            {objectives.map(objective => (
+              <ObjectiveCard
+                key={objective.id}
+                objective={objective}
+                goals={goals}
+                entries={entries}
+                weekDates={weekDates}
+                today={today}
+                isExpanded={expandedObjectiveId === objective.id}
+                onToggle={() => setExpandedObjectiveId(
+                  expandedObjectiveId === objective.id ? null : objective.id
+                )}
+                onEdit={handleEditObjective}
+                onComplete={completeObjective}
+                styles={styles}
+                theme={theme}
+                thresholds={thresholds}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -2536,13 +2544,16 @@ export default function App() {
               {tasksExpanded ? '−' : '+'}
             </button>
             <span style={styles.sectionTitle}>Tasks</span>
+            {!tasksExpanded && tasks.length > 0 && (
+              <span style={styles.sectionCount}>({tasks.length})</span>
+            )}
           </div>
           {tasksExpanded && !showTaskAdd && (
             <button onClick={() => setShowTaskAdd(true)} style={styles.sectionAddBtn}>+</button>
           )}
         </div>
         
-        {tasksExpanded ? (
+        {tasksExpanded && (
           <>
             {tasks.length > 0 && (
               <div style={styles.tasksList}>
@@ -2620,15 +2631,7 @@ export default function App() {
                 </button>
               </div>
             )}
-            
-            {tasks.length === 0 && !showTaskAdd && (
-              <div style={styles.collapsedSummary}>No tasks yet</div>
-            )}
           </>
-        ) : (
-          <div style={styles.collapsedSummary}>
-            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
-          </div>
         )}
       </div>
 
@@ -2643,13 +2646,27 @@ export default function App() {
               {goalsExpanded ? '−' : '+'}
             </button>
             <span style={styles.sectionTitle}>Goals</span>
+            {!goalsExpanded && goals.length > 0 && (
+              <>
+                <span style={styles.sectionCount}>({goals.length})</span>
+                <span style={styles.sectionAvg}>
+                  {Math.round(
+                    goals.reduce((sum, goal) => {
+                      const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
+                      const target = goal.target || 7;
+                      return sum + (achieved / target) * 100;
+                    }, 0) / goals.length
+                  )}% avg
+                </span>
+              </>
+            )}
           </div>
           {goalsExpanded && !showAddForm && (
             <button onClick={() => setShowAddForm(true)} style={styles.sectionAddBtn}>+</button>
           )}
         </div>
         
-        {goalsExpanded ? (
+        {goalsExpanded && (
           <>
             {showAddForm && (
               <div style={styles.addContainer}>
@@ -2777,20 +2794,6 @@ export default function App() {
               </table>
             </div>
           </>
-        ) : (
-          <div style={styles.collapsedSummary}>
-            {goals.length} {goals.length === 1 ? 'goal' : 'goals'}
-            {goals.length > 0 && (() => {
-              const avgPct = Math.round(
-                goals.reduce((sum, goal) => {
-                  const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
-                  const target = goal.target || 7;
-                  return sum + (achieved / target) * 100;
-                }, 0) / goals.length
-              );
-              return ` • ${avgPct}% avg`;
-            })()}
-          </div>
         )}
       </div>
 
