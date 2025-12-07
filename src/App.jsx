@@ -508,7 +508,7 @@ const useGoals = () => {
 // STYLE GENERATOR
 // ============================================
 
-const getStyles = (theme) => ({
+const getStyles = (theme, isDark = false) => ({
   container: {
     maxWidth: '540px',
     margin: '0 auto',
@@ -1007,6 +1007,7 @@ const getStyles = (theme) => ({
     boxSizing: 'border-box',
     background: theme.bg,
     color: theme.text,
+    colorScheme: isDark ? 'dark' : 'light',
   },
   modalSelect: {
     width: '100%',
@@ -1791,7 +1792,7 @@ export default function App() {
   
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
-  const styles = useMemo(() => getStyles(theme), [theme]);
+  const styles = useMemo(() => getStyles(theme, darkMode), [theme, darkMode]);
   
   const thresholds = useMemo(() => ({
     green: parseInt(settings.threshold_green) || 80,
