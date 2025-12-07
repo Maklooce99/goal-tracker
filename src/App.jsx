@@ -434,9 +434,9 @@ const getStyles = (theme) => ({
   },
   milestoneCard: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    padding: '14px 16px',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 16px',
     background: theme.bgSecondary,
     border: `1px solid ${theme.border}`,
     borderRadius: '10px',
@@ -445,40 +445,22 @@ const getStyles = (theme) => ({
     width: '100%',
     boxSizing: 'border-box',
   },
-  milestoneCardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
   milestoneIcon: {
     fontSize: '16px',
   },
   milestoneCardName: {
-    fontSize: '15px',
+    fontSize: '14px',
     fontWeight: '600',
     color: theme.text,
-  },
-  milestoneCardBody: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '12px',
+    flex: 1,
   },
   milestoneCardDays: {
-    fontSize: '13px',
+    fontSize: '12px',
     color: theme.textMuted,
     whiteSpace: 'nowrap',
   },
-  milestoneProgressContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
   milestoneProgressTrack: {
-    flex: 1,
-    maxWidth: '120px',
+    width: '80px',
     height: '6px',
     background: theme.border,
     borderRadius: '3px',
@@ -490,9 +472,9 @@ const getStyles = (theme) => ({
     transition: 'width 0.3s ease',
   },
   milestoneCardPct: {
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: '600',
-    minWidth: '40px',
+    minWidth: '36px',
     textAlign: 'right',
   },
   addMilestoneBtn: {
@@ -1044,26 +1026,20 @@ function MilestoneCard({ milestone, goals, entries, onEdit, styles, theme, thres
 
   return (
     <button onClick={() => onEdit(milestone)} style={styles.milestoneCard}>
-      <div style={styles.milestoneCardHeader}>
-        <span style={styles.milestoneIcon}>🎯</span>
-        <span style={styles.milestoneCardName}>{milestone.name}</span>
+      <span style={styles.milestoneIcon}>🎯</span>
+      <span style={styles.milestoneCardName}>{milestone.name}</span>
+      <span style={styles.milestoneCardDays}>{daysRemaining}d</span>
+      <div style={styles.milestoneProgressTrack}>
+        <div style={{
+          ...styles.milestoneProgressBar,
+          width: `${Math.min(100, overallPct)}%`,
+          background: statusColor,
+        }} />
       </div>
-      <div style={styles.milestoneCardBody}>
-        <span style={styles.milestoneCardDays}>{daysRemaining} days left</span>
-        <div style={styles.milestoneProgressContainer}>
-          <div style={styles.milestoneProgressTrack}>
-            <div style={{
-              ...styles.milestoneProgressBar,
-              width: `${Math.min(100, overallPct)}%`,
-              background: statusColor,
-            }} />
-          </div>
-          <span style={{
-            ...styles.milestoneCardPct,
-            color: statusColor,
-          }}>{overallPct}%</span>
-        </div>
-      </div>
+      <span style={{
+        ...styles.milestoneCardPct,
+        color: statusColor,
+      }}>{overallPct}%</span>
     </button>
   );
 }
