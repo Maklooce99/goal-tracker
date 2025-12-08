@@ -3036,11 +3036,16 @@ ${userContext}
 
 ${flow.systemPrompt}
 
-Respond with ONLY valid JSON, no markdown code blocks or explanation. Start directly with { and end with }`
+CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanation before or after. 
+- Start with { and end with }
+- Use double quotes for all strings
+- No trailing commas
+- Escape any special characters in strings
+- Keep ingredient lists and instructions concise to avoid JSON errors`
                 }]
               }],
               generationConfig: {
-                temperature: 0.7,
+                temperature: 0.5,
                 maxOutputTokens: 8000,
               }
             })
@@ -3062,16 +3067,29 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
         // Parse JSON from response - handle potential markdown code blocks
         let jsonStr = content;
         // Remove markdown code blocks if present
-        jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+        
         // Find JSON object
         const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-          throw new Error('Could not parse meal plan');
+          throw new Error('Could not find meal plan in response');
         }
         
-        const plan = JSON.parse(jsonMatch[0]);
-        setGeneratedPlan(plan);
-        setStep('plan');
+        // Try to fix common JSON issues
+        let cleanJson = jsonMatch[0];
+        // Remove trailing commas before } or ]
+        cleanJson = cleanJson.replace(/,\s*([}\]])/g, '$1');
+        // Fix unescaped quotes in strings (basic attempt)
+        
+        try {
+          const plan = JSON.parse(cleanJson);
+          setGeneratedPlan(plan);
+          setStep('plan');
+        } catch (parseErr) {
+          console.error('JSON Parse Error:', parseErr);
+          console.error('Raw JSON:', cleanJson.substring(0, 500));
+          throw new Error('The AI response had formatting issues. Please try again.');
+        }
       } catch (err) {
         console.error('AI Error:', err);
         setError(err.message || 'Failed to generate plan. Please try again.');
