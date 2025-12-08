@@ -3518,25 +3518,32 @@ function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
   
   const exportMarkdown = () => {
     let md = `# ${content.name || plan.name}\n\n`;
-    md += `${content.summary || ''}\n\n`;
+    md += `${content.summary || `${content.daily_calories} calories/day`}\n\n`;
     
     if (content.days) {
       content.days.forEach(day => {
         md += `## ${day.day}\n\n`;
-        Object.entries(day.meals || {}).forEach(([type, meal]) => {
-          md += `### ${type.charAt(0).toUpperCase() + type.slice(1)}: ${meal.name}\n`;
-          md += `- Prep time: ${meal.prep_time}\n`;
-          md += `- Ingredients: ${meal.ingredients?.join(', ')}\n`;
-          md += `- Instructions: ${meal.instructions}\n\n`;
+        ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
+          const meal = day[mealType] || day.meals?.[mealType];
+          if (meal) {
+            md += `### ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}: ${meal.name}\n`;
+            if (meal.calories) md += `- Calories: ${meal.calories}\n`;
+            if (meal.ingredients) md += `- Ingredients: ${meal.ingredients.join(', ')}\n`;
+            md += '\n';
+          }
         });
       });
     }
     
     if (content.shopping_list) {
       md += `## Shopping List\n\n`;
-      Object.entries(content.shopping_list).forEach(([category, items]) => {
-        md += `**${category}:** ${items.join(', ')}\n\n`;
-      });
+      if (Array.isArray(content.shopping_list)) {
+        md += content.shopping_list.join(', ') + '\n';
+      } else {
+        Object.entries(content.shopping_list).forEach(([category, items]) => {
+          md += `**${category}:** ${Array.isArray(items) ? items.join(', ') : items}\n\n`;
+        });
+      }
     }
     
     // Download
@@ -3554,15 +3561,15 @@ function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
       <div style={styles.aiModal} onClick={e => e.stopPropagation()}>
         <div style={styles.aiModalHeader}>
           <span style={styles.aiModalIcon}>📋</span>
-          <span style={styles.aiModalTitle}>{plan.name}</span>
+          <span style={styles.aiModalTitle}>{content.name || plan.name}</span>
           <button onClick={onClose} style={styles.aiModalClose}>×</button>
         </div>
 
         <div style={styles.aiModalBody}>
           <div style={styles.planViewer}>
-            {content.summary && (
+            {(content.summary || content.daily_calories) && (
               <div style={{ ...styles.planSummary, marginBottom: '16px' }}>
-                {content.summary}
+                {content.summary || `${content.daily_calories} calories/day`}
               </div>
             )}
 
@@ -3570,16 +3577,24 @@ function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
             {content.days?.map(day => (
               <div key={day.day} style={styles.planDay}>
                 <div style={styles.planDayHeader}>{day.day}</div>
-                {Object.entries(day.meals || {}).map(([mealType, meal]) => (
-                  <div key={mealType} style={styles.planMeal}>
-                    <div style={styles.planMealType}>{mealType}</div>
-                    <div style={styles.planMealName}>{meal.name}</div>
-                    <div style={styles.planMealMeta}>⏱ {meal.prep_time}</div>
-                    <div style={styles.planMealIngredients}>
-                      {meal.ingredients?.join(', ')}
+                {['breakfast', 'lunch', 'dinner'].map(mealType => {
+                  const meal = day[mealType] || day.meals?.[mealType];
+                  if (!meal) return null;
+                  return (
+                    <div key={mealType} style={styles.planMeal}>
+                      <div style={styles.planMealType}>{mealType}</div>
+                      <div style={styles.planMealName}>{meal.name}</div>
+                      {meal.calories && (
+                        <div style={styles.planMealMeta}>{meal.calories} cal</div>
+                      )}
+                      {meal.ingredients && (
+                        <div style={styles.planMealIngredients}>
+                          {meal.ingredients.join(', ')}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
 
@@ -3588,23 +3603,15 @@ function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
               <div style={styles.planSection}>
                 <div style={styles.planSectionTitle}>🛒 Shopping List</div>
                 <div style={styles.planSectionList}>
-                  {Object.entries(content.shopping_list).map(([category, items]) => (
-                    <div key={category} style={{ marginBottom: '8px' }}>
-                      <strong>{category}:</strong> {items.join(', ')}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Meal prep tips */}
-            {content.meal_prep_tips && (
-              <div style={styles.planSection}>
-                <div style={styles.planSectionTitle}>💡 Meal Prep Tips</div>
-                <div style={styles.planSectionList}>
-                  {content.meal_prep_tips.map((tip, i) => (
-                    <div key={i}>• {tip}</div>
-                  ))}
+                  {Array.isArray(content.shopping_list) ? (
+                    <div>{content.shopping_list.join(', ')}</div>
+                  ) : (
+                    Object.entries(content.shopping_list).map(([category, items]) => (
+                      <div key={category} style={{ marginBottom: '8px' }}>
+                        <strong>{category}:</strong> {Array.isArray(items) ? items.join(', ') : items}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -3612,7 +3619,7 @@ function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
         </div>
 
         <div style={styles.aiModalFooter}>
-          <button onClick={() => onArchive(plan.id)} style={styles.modalDeleteBtn}>
+          <button onClick={() => { onArchive(plan.id); onClose(); }} style={styles.modalDeleteBtn}>
             Archive
           </button>
           <div style={{ flex: 1 }} />
