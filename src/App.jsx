@@ -78,49 +78,82 @@ const MEAL_PLAN_FLOW = {
   category: 'meal_plan',
   title: 'Meal Plan',
   icon: '🥗',
+  intro: {
+    headline: "Let's build a meal plan that fits YOUR life.",
+    bullets: [
+      "Your body & activity level",
+      "Your goals",
+      "Any dietary restrictions"
+    ],
+    deliverables: [
+      "7-day meal plan with recipes",
+      "Shopping list by aisle",
+      "Meal prep tips"
+    ],
+    duration: "1 minute"
+  },
   questions: [
     {
+      id: 'weight',
+      text: "What's your current weight?",
+      type: 'input',
+      inputType: 'number',
+      placeholder: "e.g., 165",
+      suffix: 'lbs'
+    },
+    {
+      id: 'gender',
+      text: "What's your gender?",
+      type: 'choice',
+      options: ['Male', 'Female', 'Other']
+    },
+    {
+      id: 'age',
+      text: "How old are you?",
+      type: 'input',
+      inputType: 'number',
+      placeholder: "e.g., 35"
+    },
+    {
+      id: 'weight_goal',
+      text: "What's your goal?",
+      type: 'choice',
+      options: ['Lose weight', 'Maintain weight', 'Gain weight']
+    },
+    {
+      id: 'exercise_frequency',
+      text: "How many times do you exercise per week?",
+      type: 'choice',
+      options: ['0-1 times', '2-3 times', '4-5 times', '6+ times']
+    },
+    {
+      id: 'specific_goals',
+      text: "Any specific goals?",
+      type: 'freeform',
+      placeholder: "e.g., more protein, budget-friendly, quick meals, more energy..."
+    },
+    {
       id: 'restrictions',
-      text: "Any dietary restrictions or preferences?",
-      placeholder: "e.g., vegetarian, gluten-free, no nuts, halal...",
-      type: 'freeform'
-    },
-    {
-      id: 'meals_per_day',
-      text: "How many meals per day?",
-      type: 'choice',
-      options: ['2 meals', '3 meals', '3 meals + snacks']
-    },
-    {
-      id: 'cooking_time',
-      text: "How much time do you have for cooking per meal?",
-      type: 'choice',
-      options: ['15 min (quick & easy)', '30 min (moderate)', '45+ min (love cooking)']
-    },
-    {
-      id: 'household_size',
-      text: "Cooking for how many people?",
-      type: 'choice',
-      options: ['Just me', '2 people', '3-4 people', '5+ people']
-    },
-    {
-      id: 'goals',
-      text: "Any specific health or budget goals?",
-      placeholder: "e.g., lose weight, more energy, budget-friendly, high protein...",
-      type: 'freeform'
+      text: "Any dietary restrictions?",
+      type: 'freeform',
+      placeholder: "e.g., vegetarian, no nuts, gluten-free, lactose intolerant..."
     }
   ],
-  systemPrompt: `You are a nutrition-aware meal planning assistant. Create practical, delicious meal plans based on user preferences.
+  systemPrompt: `You are an expert nutritionist and meal planning assistant. Create a personalized, practical 7-day meal plan based on the user's profile.
+
+Use the user's weight, gender, age, goal, and exercise frequency to estimate their daily caloric needs and macro targets. Adjust the meal plan accordingly:
+- For weight loss: Create a moderate caloric deficit (~500 cal below TDEE)
+- For maintenance: Match estimated TDEE
+- For weight gain: Create a moderate surplus (~300-500 cal above TDEE)
 
 Your response must be valid JSON matching this exact structure:
 {
-  "name": "Weekly [Type] Meal Plan",
-  "summary": "Brief 1-line description",
+  "name": "Personalized Weekly Meal Plan",
+  "summary": "Brief 1-line description including daily calorie target",
   "parameters": {
-    "restrictions": "user restrictions",
-    "meals_per_day": 3,
-    "prep_time": "30 min",
-    "servings": 2
+    "daily_calories": 2000,
+    "protein_grams": 150,
+    "goal": "user's goal"
   },
   "days": [
     {
@@ -128,29 +161,32 @@ Your response must be valid JSON matching this exact structure:
       "meals": {
         "breakfast": {
           "name": "Meal name",
+          "calories": 450,
+          "protein": 30,
           "prep_time": "X min",
-          "ingredients": ["ingredient1", "ingredient2"],
+          "ingredients": ["ingredient with quantity", "ingredient with quantity"],
           "instructions": "Brief cooking instructions"
         },
         "lunch": { ... },
-        "dinner": { ... }
+        "dinner": { ... },
+        "snack": { ... }
       }
     }
   ],
   "shopping_list": {
-    "produce": ["item1", "item2"],
-    "protein": ["item1"],
-    "dairy": ["item1"],
-    "pantry": ["item1"],
-    "frozen": ["item1"]
+    "produce": ["item with quantity"],
+    "protein": ["item with quantity"],
+    "dairy": ["item with quantity"],
+    "grains": ["item with quantity"],
+    "pantry": ["item with quantity"]
   },
   "meal_prep_tips": [
-    "Tip 1 for batch cooking",
-    "Tip 2 for saving time"
+    "Tip 1 for batch cooking or time saving",
+    "Tip 2"
   ]
 }
 
-Include all 7 days. Make meals varied, balanced, and practical. Include specific quantities in ingredients. Keep instructions concise but clear.`
+Include all 7 days. Make meals varied, balanced, and practical. Respect any dietary restrictions strictly. Include specific quantities in ingredients and shopping list. Keep instructions concise but clear.`
 };
 
 const PLAN_CATEGORIES = [
@@ -1351,6 +1387,43 @@ const getStyles = (theme, isDark = false) => ({
     overflow: 'auto',
     padding: '20px',
   },
+  // Intro screen styles
+  aiIntro: {
+    textAlign: 'center',
+    padding: '10px 0',
+  },
+  aiIntroHeadline: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: theme.text,
+    marginBottom: '24px',
+    lineHeight: '1.4',
+  },
+  aiIntroSection: {
+    textAlign: 'left',
+    marginBottom: '20px',
+  },
+  aiIntroLabel: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: theme.textMuted,
+    marginBottom: '8px',
+  },
+  aiIntroBullets: {
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+  aiIntroBullet: {
+    fontSize: '14px',
+    color: theme.text,
+    padding: '4px 0',
+  },
+  aiIntroDuration: {
+    fontSize: '13px',
+    color: theme.textFaint,
+    marginTop: '24px',
+  },
   aiQuestion: {
     marginBottom: '20px',
   },
@@ -1370,6 +1443,15 @@ const getStyles = (theme, isDark = false) => ({
     color: theme.text,
     outline: 'none',
     boxSizing: 'border-box',
+  },
+  aiInputWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  aiInputSuffix: {
+    fontSize: '14px',
+    color: theme.textMuted,
   },
   aiChoices: {
     display: 'flex',
@@ -1458,6 +1540,10 @@ const getStyles = (theme, isDark = false) => ({
   aiLoadingText: {
     fontSize: '14px',
     color: theme.textMuted,
+  },
+  aiLoadingSubtext: {
+    fontSize: '12px',
+    color: theme.textFaint,
   },
   // Plan viewer
   planViewer: {
@@ -2900,7 +2986,7 @@ function AIPlannerModal({
   styles, 
   theme 
 }) {
-  const [step, setStep] = useState('questions'); // questions, loading, plan, convert
+  const [step, setStep] = useState('intro'); // intro, questions, loading, plan, convert
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
   const [generatedPlan, setGeneratedPlan] = useState(null);
@@ -2944,7 +3030,7 @@ function AIPlannerModal({
             body: JSON.stringify({
               contents: [{
                 parts: [{
-                  text: `Based on these preferences, create a detailed 7-day meal plan:
+                  text: `Create a personalized 7-day meal plan for this person:
 
 ${userContext}
 
@@ -3054,6 +3140,8 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
 
   const canProceed = question?.type === 'choice' 
     ? !!answers[question?.id]
+    : question?.type === 'input'
+    ? !!answers[question?.id]
     : true;
 
   return (
@@ -3070,6 +3158,34 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
 
         {/* Body */}
         <div style={styles.aiModalBody}>
+          {step === 'intro' && (
+            <div style={styles.aiIntro}>
+              <h2 style={styles.aiIntroHeadline}>{flow.intro.headline}</h2>
+              
+              <div style={styles.aiIntroSection}>
+                <div style={styles.aiIntroLabel}>I'll ask about:</div>
+                <ul style={styles.aiIntroBullets}>
+                  {flow.intro.bullets.map((bullet, i) => (
+                    <li key={i} style={styles.aiIntroBullet}>• {bullet}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={styles.aiIntroSection}>
+                <div style={styles.aiIntroLabel}>Then I'll create:</div>
+                <ul style={styles.aiIntroBullets}>
+                  {flow.intro.deliverables.map((item, i) => (
+                    <li key={i} style={styles.aiIntroBullet}>✓ {item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={styles.aiIntroDuration}>
+                ⏱ Takes about {flow.intro.duration}
+              </div>
+            </div>
+          )}
+
           {step === 'questions' && (
             <>
               {/* Progress dots */}
@@ -3114,6 +3230,22 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
                   />
                 )}
 
+                {question.type === 'input' && (
+                  <div style={styles.aiInputWrapper}>
+                    <input
+                      type={question.inputType || 'text'}
+                      value={answers[question.id] || ''}
+                      onChange={e => handleAnswer(e.target.value)}
+                      placeholder={question.placeholder}
+                      style={styles.aiQuestionInput}
+                      autoFocus
+                    />
+                    {question.suffix && (
+                      <span style={styles.aiInputSuffix}>{question.suffix}</span>
+                    )}
+                  </div>
+                )}
+
                 {question.type === 'choice' && (
                   <div style={styles.aiChoices}>
                     {question.options.map(option => (
@@ -3137,7 +3269,8 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
           {step === 'loading' && (
             <div style={styles.aiLoading}>
               <div style={styles.aiLoadingSpinner} />
-              <div style={styles.aiLoadingText}>Creating your meal plan...</div>
+              <div style={styles.aiLoadingText}>Creating your personalized meal plan...</div>
+              <div style={styles.aiLoadingSubtext}>This may take 15-30 seconds</div>
             </div>
           )}
 
@@ -3308,11 +3441,26 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
           )}
         </div>
 
-        {/* Footer - only for questions step */}
+        {/* Footer */}
+        {step === 'intro' && (
+          <div style={styles.aiModalFooter}>
+            <button 
+              onClick={() => setStep('questions')}
+              style={styles.aiNextBtn}
+            >
+              Let's Start →
+            </button>
+          </div>
+        )}
+
         {step === 'questions' && (
           <div style={styles.aiModalFooter}>
-            {currentQuestion > 0 && (
+            {currentQuestion > 0 ? (
               <button onClick={handleBack} style={styles.aiBackBtn}>
+                ← Back
+              </button>
+            ) : (
+              <button onClick={() => setStep('intro')} style={styles.aiBackBtn}>
                 ← Back
               </button>
             )}
@@ -3331,7 +3479,7 @@ Respond with ONLY valid JSON, no markdown code blocks or explanation. Start dire
 
         {step === 'plan' && (
           <div style={styles.aiModalFooter}>
-            <button onClick={() => setStep('questions')} style={styles.aiBackBtn}>
+            <button onClick={() => { setStep('questions'); setCurrentQuestion(0); }} style={styles.aiBackBtn}>
               ← Start Over
             </button>
           </div>
