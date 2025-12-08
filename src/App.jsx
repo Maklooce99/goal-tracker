@@ -3513,7 +3513,15 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
 // PLAN VIEWER MODAL
 // ============================================
 
-function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
+function PlanViewerModal({ plan, onClose, onArchive, onConvert, styles, theme }) {
+  const [showConvert, setShowConvert] = useState(false);
+  const [createObjective, setCreateObjective] = useState(true);
+  const [createGoal, setCreateGoal] = useState(true);
+  const [selectedTasks, setSelectedTasks] = useState({
+    grocery: true,
+    mealPrep: true
+  });
+  
   const content = plan.content || {};
   
   const exportMarkdown = () => {
@@ -3556,79 +3564,220 @@ function PlanViewerModal({ plan, onClose, onArchive, styles, theme }) {
     URL.revokeObjectURL(url);
   };
 
+  const handleCreateItems = async () => {
+    const items = {
+      objective: createObjective ? {
+        name: 'Follow meal plan',
+        start_date: getToday()
+      } : null,
+      goal: createGoal ? {
+        name: 'Stick to meal plan',
+        target: 7
+      } : null,
+      tasks: []
+    };
+    
+    if (selectedTasks.grocery) {
+      items.tasks.push({ name: 'Week 1 grocery shopping' });
+    }
+    if (selectedTasks.mealPrep) {
+      items.tasks.push({ name: 'Sunday meal prep' });
+    }
+
+    await onConvert(items, plan.id);
+    onClose();
+  };
+
   return (
     <div style={styles.aiModalOverlay} onClick={onClose}>
       <div style={styles.aiModal} onClick={e => e.stopPropagation()}>
         <div style={styles.aiModalHeader}>
-          <span style={styles.aiModalIcon}>📋</span>
-          <span style={styles.aiModalTitle}>{content.name || plan.name}</span>
+          <span style={styles.aiModalIcon}>{showConvert ? '➡️' : '📋'}</span>
+          <span style={styles.aiModalTitle}>
+            {showConvert ? 'Convert to Tracker' : (content.name || plan.name)}
+          </span>
           <button onClick={onClose} style={styles.aiModalClose}>×</button>
         </div>
 
         <div style={styles.aiModalBody}>
-          <div style={styles.planViewer}>
-            {(content.summary || content.daily_calories) && (
-              <div style={{ ...styles.planSummary, marginBottom: '16px' }}>
-                {content.summary || `${content.daily_calories} calories/day`}
-              </div>
-            )}
+          {!showConvert ? (
+            <div style={styles.planViewer}>
+              {(content.summary || content.daily_calories) && (
+                <div style={{ ...styles.planSummary, marginBottom: '16px' }}>
+                  {content.summary || `${content.daily_calories} calories/day`}
+                </div>
+              )}
 
-            {/* All days */}
-            {content.days?.map(day => (
-              <div key={day.day} style={styles.planDay}>
-                <div style={styles.planDayHeader}>{day.day}</div>
-                {['breakfast', 'lunch', 'dinner'].map(mealType => {
-                  const meal = day[mealType] || day.meals?.[mealType];
-                  if (!meal) return null;
-                  return (
-                    <div key={mealType} style={styles.planMeal}>
-                      <div style={styles.planMealType}>{mealType}</div>
-                      <div style={styles.planMealName}>{meal.name}</div>
-                      {meal.calories && (
-                        <div style={styles.planMealMeta}>{meal.calories} cal</div>
-                      )}
-                      {meal.ingredients && (
-                        <div style={styles.planMealIngredients}>
-                          {meal.ingredients.join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-
-            {/* Shopping list */}
-            {content.shopping_list && (
-              <div style={styles.planSection}>
-                <div style={styles.planSectionTitle}>🛒 Shopping List</div>
-                <div style={styles.planSectionList}>
-                  {Array.isArray(content.shopping_list) ? (
-                    <div>{content.shopping_list.join(', ')}</div>
-                  ) : (
-                    Object.entries(content.shopping_list).map(([category, items]) => (
-                      <div key={category} style={{ marginBottom: '8px' }}>
-                        <strong>{category}:</strong> {Array.isArray(items) ? items.join(', ') : items}
+              {/* All days */}
+              {content.days?.map(day => (
+                <div key={day.day} style={styles.planDay}>
+                  <div style={styles.planDayHeader}>{day.day}</div>
+                  {['breakfast', 'lunch', 'dinner'].map(mealType => {
+                    const meal = day[mealType] || day.meals?.[mealType];
+                    if (!meal) return null;
+                    return (
+                      <div key={mealType} style={styles.planMeal}>
+                        <div style={styles.planMealType}>{mealType}</div>
+                        <div style={styles.planMealName}>{meal.name}</div>
+                        {meal.calories && (
+                          <div style={styles.planMealMeta}>{meal.calories} cal</div>
+                        )}
+                        {meal.ingredients && (
+                          <div style={styles.planMealIngredients}>
+                            {meal.ingredients.join(', ')}
+                          </div>
+                        )}
                       </div>
-                    ))
-                  )}
+                    );
+                  })}
+                </div>
+              ))}
+
+              {/* Shopping list */}
+              {content.shopping_list && (
+                <div style={styles.planSection}>
+                  <div style={styles.planSectionTitle}>🛒 Shopping List</div>
+                  <div style={styles.planSectionList}>
+                    {Array.isArray(content.shopping_list) ? (
+                      <div>{content.shopping_list.join(', ')}</div>
+                    ) : (
+                      Object.entries(content.shopping_list).map(([category, items]) => (
+                        <div key={category} style={{ marginBottom: '8px' }}>
+                          <strong>{category}:</strong> {Array.isArray(items) ? items.join(', ') : items}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p style={{ fontSize: '13px', color: theme.textMuted, marginBottom: '20px' }}>
+                Create tracker items from this meal plan:
+              </p>
+
+              {/* Objective */}
+              <div style={styles.conversionItem}>
+                <div style={styles.conversionItemHeader}>
+                  <span style={styles.conversionItemType}>◎ Objective</span>
+                </div>
+                <div style={styles.conversionItemName}>Follow meal plan</div>
+                <div style={styles.conversionItemWhy}>
+                  This captures your overall health goal. The meal plan will be saved for reference.
+                </div>
+                <div style={styles.conversionItemActions}>
+                  <button
+                    onClick={() => setCreateObjective(true)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(createObjective ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    ✓ Create
+                  </button>
+                  <button
+                    onClick={() => setCreateObjective(false)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(!createObjective ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    Skip
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* Goal */}
+              <div style={styles.conversionItem}>
+                <div style={styles.conversionItemHeader}>
+                  <span style={styles.conversionItemType}>⟳ Goal (7x/week)</span>
+                </div>
+                <div style={styles.conversionItemName}>Stick to meal plan</div>
+                <div style={styles.conversionItemWhy}>
+                  Track daily adherence to build the habit. Check off each day you follow the plan.
+                </div>
+                <div style={styles.conversionItemActions}>
+                  <button
+                    onClick={() => setCreateGoal(true)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(createGoal ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    ✓ Create
+                  </button>
+                  <button
+                    onClick={() => setCreateGoal(false)}
+                    style={{
+                      ...styles.conversionRadio,
+                      ...(!createGoal ? styles.conversionRadioSelected : {}),
+                    }}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+
+              {/* Tasks */}
+              <div style={styles.conversionItem}>
+                <div style={styles.conversionItemHeader}>
+                  <span style={styles.conversionItemType}>◇ Tasks (one-time)</span>
+                </div>
+                <div style={styles.conversionTaskList}>
+                  <div style={styles.conversionTask}>
+                    <div 
+                      onClick={() => setSelectedTasks(prev => ({ ...prev, grocery: !prev.grocery }))}
+                      style={{
+                        ...styles.conversionTaskCheck,
+                        ...(selectedTasks.grocery ? styles.conversionTaskCheckSelected : {}),
+                      }}
+                    >
+                      {selectedTasks.grocery && <span style={{ color: theme.bg, fontSize: '10px' }}>✓</span>}
+                    </div>
+                    Week 1 grocery shopping
+                  </div>
+                  <div style={styles.conversionTask}>
+                    <div 
+                      onClick={() => setSelectedTasks(prev => ({ ...prev, mealPrep: !prev.mealPrep }))}
+                      style={{
+                        ...styles.conversionTaskCheck,
+                        ...(selectedTasks.mealPrep ? styles.conversionTaskCheckSelected : {}),
+                      }}
+                    >
+                      {selectedTasks.mealPrep && <span style={{ color: theme.bg, fontSize: '10px' }}>✓</span>}
+                    </div>
+                    Sunday meal prep
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={handleCreateItems} style={styles.createItemsBtn}>
+                Create {[createObjective, createGoal, selectedTasks.grocery, selectedTasks.mealPrep].filter(Boolean).length} Items
+              </button>
+            </div>
+          )}
         </div>
 
         <div style={styles.aiModalFooter}>
-          <button onClick={() => { onArchive(plan.id); onClose(); }} style={styles.modalDeleteBtn}>
-            Archive
-          </button>
-          <div style={{ flex: 1 }} />
-          <button onClick={exportMarkdown} style={styles.aiBackBtn}>
-            📥 Export
-          </button>
-          <button onClick={onClose} style={styles.aiNextBtn}>
-            Close
-          </button>
+          {showConvert ? (
+            <button onClick={() => setShowConvert(false)} style={styles.aiBackBtn}>
+              ← Back to Plan
+            </button>
+          ) : (
+            <>
+              <button onClick={() => { onArchive(plan.id); onClose(); }} style={styles.modalDeleteBtn}>
+                Archive
+              </button>
+              <div style={{ flex: 1 }} />
+              <button onClick={exportMarkdown} style={styles.aiBackBtn}>
+                📥 Export
+              </button>
+              <button onClick={() => setShowConvert(true)} style={styles.planConvertBtn}>
+                ➡️ Convert
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -4522,6 +4671,7 @@ export default function App() {
           plan={viewingPlan}
           onClose={() => setViewingPlan(null)}
           onArchive={archivePlan}
+          onConvert={handleCreateItemsFromPlan}
           styles={styles}
           theme={theme}
         />
