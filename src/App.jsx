@@ -139,54 +139,25 @@ const MEAL_PLAN_FLOW = {
       placeholder: "e.g., vegetarian, no nuts, gluten-free, lactose intolerant..."
     }
   ],
-  systemPrompt: `You are an expert nutritionist and meal planning assistant. Create a personalized, practical 7-day meal plan based on the user's profile.
+  systemPrompt: `Create a 7-day meal plan as valid JSON. Include breakfast, lunch, dinner for each day.
 
-Use the user's weight, gender, age, goal, and exercise frequency to estimate their daily caloric needs and macro targets. Adjust the meal plan accordingly:
-- For weight loss: Create a moderate caloric deficit (~500 cal below TDEE)
-- For maintenance: Match estimated TDEE
-- For weight gain: Create a moderate surplus (~300-500 cal above TDEE)
-
-Your response must be valid JSON matching this exact structure:
+Return this exact JSON structure:
 {
-  "name": "Personalized Weekly Meal Plan",
-  "summary": "Brief 1-line description including daily calorie target",
-  "parameters": {
-    "daily_calories": 2000,
-    "protein_grams": 150,
-    "goal": "user's goal"
-  },
+  "name": "Weekly Meal Plan",
+  "summary": "Brief description",
+  "daily_calories": 2000,
   "days": [
     {
       "day": "Monday",
-      "meals": {
-        "breakfast": {
-          "name": "Meal name",
-          "calories": 450,
-          "protein": 30,
-          "prep_time": "X min",
-          "ingredients": ["ingredient with quantity", "ingredient with quantity"],
-          "instructions": "Brief cooking instructions"
-        },
-        "lunch": { ... },
-        "dinner": { ... },
-        "snack": { ... }
-      }
+      "breakfast": {"name": "Meal", "calories": 400, "ingredients": ["item 1", "item 2"]},
+      "lunch": {"name": "Meal", "calories": 500, "ingredients": ["item 1", "item 2"]},
+      "dinner": {"name": "Meal", "calories": 600, "ingredients": ["item 1", "item 2"]}
     }
   ],
-  "shopping_list": {
-    "produce": ["item with quantity"],
-    "protein": ["item with quantity"],
-    "dairy": ["item with quantity"],
-    "grains": ["item with quantity"],
-    "pantry": ["item with quantity"]
-  },
-  "meal_prep_tips": [
-    "Tip 1 for batch cooking or time saving",
-    "Tip 2"
-  ]
+  "shopping_list": ["item 1", "item 2", "item 3"]
 }
 
-Include all 7 days. Make meals varied, balanced, and practical. Respect any dietary restrictions strictly. Include specific quantities in ingredients and shopping list. Keep instructions concise but clear.`
+Include all 7 days (Monday through Sunday). Keep it simple and valid JSON.`
 };
 
 const PLAN_CATEGORIES = [
@@ -3296,20 +3267,28 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
             <div style={styles.planViewer}>
               <div style={styles.planHeader}>
                 <div style={styles.planName}>{generatedPlan.name}</div>
-                <div style={styles.planSummary}>{generatedPlan.summary}</div>
+                <div style={styles.planSummary}>
+                  {generatedPlan.summary || `${generatedPlan.daily_calories} cal/day`}
+                </div>
               </div>
 
               {/* Days */}
               {generatedPlan.days?.slice(0, 3).map(day => (
                 <div key={day.day} style={styles.planDay}>
                   <div style={styles.planDayHeader}>{day.day}</div>
-                  {Object.entries(day.meals || {}).map(([mealType, meal]) => (
-                    <div key={mealType} style={styles.planMeal}>
-                      <div style={styles.planMealType}>{mealType}</div>
-                      <div style={styles.planMealName}>{meal.name}</div>
-                      <div style={styles.planMealMeta}>⏱ {meal.prep_time}</div>
-                    </div>
-                  ))}
+                  {['breakfast', 'lunch', 'dinner'].map(mealType => {
+                    const meal = day[mealType] || day.meals?.[mealType];
+                    if (!meal) return null;
+                    return (
+                      <div key={mealType} style={styles.planMeal}>
+                        <div style={styles.planMealType}>{mealType}</div>
+                        <div style={styles.planMealName}>{meal.name}</div>
+                        {meal.calories && (
+                          <div style={styles.planMealMeta}>{meal.calories} cal</div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
               
@@ -3329,12 +3308,20 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
                 <div style={styles.planSection}>
                   <div style={styles.planSectionTitle}>🛒 Shopping List</div>
                   <div style={styles.planSectionList}>
-                    {Object.entries(generatedPlan.shopping_list).slice(0, 3).map(([category, items]) => (
-                      <div key={category}>
-                        <strong>{category}:</strong> {items.slice(0, 4).join(', ')}
-                        {items.length > 4 && ` +${items.length - 4} more`}
+                    {Array.isArray(generatedPlan.shopping_list) ? (
+                      // Simple array format
+                      <div>{generatedPlan.shopping_list.slice(0, 8).join(', ')}
+                        {generatedPlan.shopping_list.length > 8 && ` +${generatedPlan.shopping_list.length - 8} more`}
                       </div>
-                    ))}
+                    ) : (
+                      // Object format with categories
+                      Object.entries(generatedPlan.shopping_list).slice(0, 3).map(([category, items]) => (
+                        <div key={category}>
+                          <strong>{category}:</strong> {Array.isArray(items) ? items.slice(0, 4).join(', ') : items}
+                          {Array.isArray(items) && items.length > 4 && ` +${items.length - 4} more`}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
