@@ -3021,7 +3021,7 @@ function AIPlannerModal({
           .join('\n');
         
         const response = await fetch(
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDvcTOgjEiE_MLIsQt3CkHlUsvbOqLI8uc",
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyDvcTOgjEiE_MLIsQt3CkHlUsvbOqLI8uc",
           {
             method: "POST",
             headers: {
