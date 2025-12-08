@@ -4340,20 +4340,33 @@ export default function App() {
               {goalsExpanded ? '−' : '+'}
             </button>
             <span style={styles.sectionTitle}>Goals</span>
-            {!goalsExpanded && goals.length > 0 && (
-              <>
-                <span style={styles.sectionCount}>({goals.length})</span>
-                <span style={styles.sectionAvg}>
-                  {Math.round(
-                    goals.reduce((sum, goal) => {
-                      const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
-                      const target = goal.target || 7;
-                      return sum + (achieved / target) * 100;
-                    }, 0) / goals.length
-                  )}% avg
-                </span>
-              </>
-            )}
+            {!goalsExpanded && goals.length > 0 && (() => {
+              // Calculate rolling average only for days that have passed in the selected week
+              const daysToCount = weekDates.filter(d => d <= today);
+              if (daysToCount.length === 0) return (
+                <>
+                  <span style={styles.sectionCount}>({goals.length})</span>
+                  <span style={styles.sectionAvg}>—</span>
+                </>
+              );
+              
+              const avgPct = Math.round(
+                goals.reduce((sum, goal) => {
+                  const achieved = daysToCount.filter(d => entries[`${goal.id}-${d}`]).length;
+                  const expectedDays = Math.min(daysToCount.length, goal.target || 7);
+                  // Pro-rate target based on days elapsed
+                  const proRatedTarget = ((goal.target || 7) / 7) * daysToCount.length;
+                  return sum + (achieved / proRatedTarget) * 100;
+                }, 0) / goals.length
+              );
+              
+              return (
+                <>
+                  <span style={styles.sectionCount}>({goals.length})</span>
+                  <span style={styles.sectionAvg}>{avgPct}% avg</span>
+                </>
+              );
+            })()}
           </div>
           {goalsExpanded && !showAddForm && (
             <button onClick={() => setShowAddForm(true)} style={styles.sectionAddBtn}>+</button>
