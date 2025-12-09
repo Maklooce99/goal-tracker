@@ -1800,6 +1800,7 @@ const getStyles = (theme, isDark = false) => ({
     padding: '14px',
     background: theme.bgSecondary,
     borderRadius: '8px',
+    flexWrap: 'wrap',
   },
   addField: {
     display: 'flex',
