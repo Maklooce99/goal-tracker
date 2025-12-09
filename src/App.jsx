@@ -227,6 +227,34 @@ const weeksBetween = (date1, date2) => {
   return Math.floor(daysBetween(date1, date2) / 7);
 };
 
+// Calculate streak for a goal - consecutive days checked going backwards from today
+const calculateStreak = (goalId, entries, today) => {
+  let streak = 0;
+  let currentDate = new Date(today);
+  currentDate.setHours(12, 0, 0, 0);
+  
+  // First, check if today is checked. If not, start from yesterday.
+  const todayStr = getDateString(currentDate);
+  if (!entries[`${goalId}-${todayStr}`]) {
+    currentDate.setDate(currentDate.getDate() - 1);
+  }
+  
+  // Now count backwards while consecutive days are checked
+  while (true) {
+    const dateStr = getDateString(currentDate);
+    if (entries[`${goalId}-${dateStr}`]) {
+      streak++;
+      currentDate.setDate(currentDate.getDate() - 1);
+    } else {
+      break;
+    }
+    // Safety limit to prevent infinite loop
+    if (streak > 365) break;
+  }
+  
+  return streak;
+};
+
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ============================================
@@ -1893,6 +1921,12 @@ const getStyles = (theme, isDark = false) => ({
     fontSize: '11px',
     marginLeft: '4px',
   },
+  streakBadge: {
+    fontSize: '11px',
+    marginLeft: '6px',
+    color: '#f97316',
+    fontWeight: '500',
+  },
   deleteBtn: {
     background: 'none',
     border: 'none',
@@ -2228,7 +2262,7 @@ const getStyles = (theme, isDark = false) => ({
 // SORTABLE ROW COMPONENT
 // ============================================
 
-function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, onEdit, styles, theme, thresholds }) {
+function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal, onEdit, styles, theme, thresholds, streakThreshold }) {
   const [isHovered, setIsHovered] = useState(false);
   
   const {
@@ -2249,6 +2283,10 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
   const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
   const target = goal.target || 7;
   const pct = Math.round((achieved / target) * 100);
+  
+  // Calculate streak
+  const streak = calculateStreak(goal.id, entries, today);
+  const showStreak = streak >= streakThreshold;
   
   const getPctColor = (pct) => {
     if (pct >= thresholds.green) return theme.success;
@@ -2279,6 +2317,9 @@ function SortableRow({ goal, weekDates, today, entries, toggleEntry, deleteGoal,
           style={styles.goalText}
         >
           {goal.name}
+          {showStreak && (
+            <span style={styles.streakBadge}>🔥{streak}</span>
+          )}
           <span style={styles.goalTarget}>({target}x)</span>
         </span>
         <button 
@@ -3798,11 +3839,15 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
   const [thresholdYellow, setThresholdYellow] = useState(
     settings.threshold_yellow || '50'
   );
+  const [streakThreshold, setStreakThreshold] = useState(
+    settings.streak_threshold || '2'
+  );
 
   const handleSave = () => {
     onSave('tracking_start_date', trackingStartDate);
     onSave('threshold_green', thresholdGreen);
     onSave('threshold_yellow', thresholdYellow);
+    onSave('streak_threshold', streakThreshold);
     onClose();
   };
 
@@ -3861,6 +3906,24 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
               <span style={styles.thresholdLabel}>Red &lt;</span>
               <span style={styles.thresholdValue}>{thresholdYellow}%</span>
             </div>
+          </div>
+        </div>
+
+        <div style={styles.modalField}>
+          <label style={styles.modalLabel}>Streak Threshold</label>
+          <p style={styles.modalHint}>
+            Minimum consecutive days to show 🔥 streak indicator.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="number"
+              min="2"
+              max="30"
+              value={streakThreshold}
+              onChange={e => setStreakThreshold(e.target.value)}
+              style={{ ...styles.thresholdInput, width: '60px' }}
+            />
+            <span style={styles.modalHint}>days</span>
           </div>
         </div>
         
@@ -4492,6 +4555,7 @@ export default function App() {
                             styles={styles}
                             theme={theme}
                             thresholds={thresholds}
+                            streakThreshold={parseInt(settings.streak_threshold) || 2}
                           />
                         ))}
                       </SortableContext>
