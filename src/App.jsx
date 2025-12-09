@@ -924,6 +924,15 @@ const getStyles = (theme, isDark = false) => ({
     color: theme.textMuted,
     marginLeft: '4px',
   },
+  goalMetrics: {
+    display: 'flex',
+    gap: '12px',
+    marginLeft: '8px',
+  },
+  goalMetricItem: {
+    fontSize: '11px',
+    color: theme.textFaint,
+  },
   sectionAddBtn: {
     width: '22px',
     height: '22px',
@@ -3990,6 +3999,32 @@ export default function App() {
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const trackingStartDate = settings.tracking_start_date || getToday();
 
+  // Calculate Current and Pace metrics for goals
+  const goalMetrics = useMemo(() => {
+    if (goals.length === 0) return { current: null, pace: null };
+    
+    const daysElapsed = weekDates.filter(d => d <= today).length;
+    if (daysElapsed === 0) return { current: null, pace: null };
+    
+    // Total achieved across all goals
+    const totalAchieved = goals.reduce((sum, goal) => {
+      return sum + weekDates.filter(d => d <= today && entries[`${goal.id}-${d}`]).length;
+    }, 0);
+    
+    // Total weekly target across all goals
+    const totalWeeklyTarget = goals.reduce((sum, goal) => sum + (goal.target || 7), 0);
+    
+    // Current: total achieved / total weekly target
+    const current = Math.round((totalAchieved / totalWeeklyTarget) * 100);
+    
+    // Pace: if you continue at current rate, where will you end?
+    // (achieved / days elapsed) * 7 = projected total, then / weekly target
+    const projectedTotal = (totalAchieved / daysElapsed) * 7;
+    const pace = Math.round((projectedTotal / totalWeeklyTarget) * 100);
+    
+    return { current, pace };
+  }, [goals, weekDates, today, entries]);
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -4403,33 +4438,27 @@ export default function App() {
               {goalsExpanded ? '−' : '+'}
             </button>
             <span style={styles.sectionTitle}>Goals</span>
-            {!goalsExpanded && goals.length > 0 && (() => {
-              // Calculate rolling average only for days that have passed in the selected week
-              const daysToCount = weekDates.filter(d => d <= today);
-              if (daysToCount.length === 0) return (
-                <>
-                  <span style={styles.sectionCount}>({goals.length})</span>
-                  <span style={styles.sectionAvg}>—</span>
-                </>
-              );
-              
-              const avgPct = Math.round(
-                goals.reduce((sum, goal) => {
-                  const achieved = daysToCount.filter(d => entries[`${goal.id}-${d}`]).length;
-                  const expectedDays = Math.min(daysToCount.length, goal.target || 7);
-                  // Pro-rate target based on days elapsed
-                  const proRatedTarget = ((goal.target || 7) / 7) * daysToCount.length;
-                  return sum + (achieved / proRatedTarget) * 100;
-                }, 0) / goals.length
-              );
-              
-              return (
-                <>
-                  <span style={styles.sectionCount}>({goals.length})</span>
-                  <span style={styles.sectionAvg}>{avgPct}% avg</span>
-                </>
-              );
-            })()}
+            {goals.length > 0 && (
+              <>
+                {!goalsExpanded && <span style={styles.sectionCount}>({goals.length})</span>}
+                {goalMetrics.current !== null && (
+                  <span style={styles.goalMetrics}>
+                    <span style={styles.goalMetricItem}>
+                      Current: <span style={{
+                        color: goalMetrics.current >= thresholds.green ? theme.success :
+                               goalMetrics.current >= thresholds.yellow ? theme.warning : theme.danger
+                      }}>{goalMetrics.current}%</span>
+                    </span>
+                    <span style={styles.goalMetricItem}>
+                      Pace: <span style={{
+                        color: goalMetrics.pace >= thresholds.green ? theme.success :
+                               goalMetrics.pace >= thresholds.yellow ? theme.warning : theme.danger
+                      }}>{goalMetrics.pace}%</span>
+                    </span>
+                  </span>
+                )}
+              </>
+            )}
           </div>
           {goalsExpanded && !showAddForm && (
             <button onClick={() => setShowAddForm(true)} style={styles.sectionAddBtn}>+</button>
