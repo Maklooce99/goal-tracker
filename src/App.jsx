@@ -2978,6 +2978,9 @@ function TaskEditor({ task, objectives, onSave, onDelete, onClose, styles }) {
 // AI PLANNER MODAL
 // ============================================
 
+// Edge Function URL for Gemini API (keeps API key server-side)
+const GEMINI_EDGE_FUNCTION_URL = 'https://evapuqvlxouaoaazcmxb.supabase.co/functions/v1/gemini';
+
 // System prompts for AI
 const PLAN_SYSTEM_PROMPT = `You are a helpful planning assistant. Create practical, actionable plans based on the user's input. Be conversational and ask clarifying questions if needed before generating a plan. Keep responses concise but helpful.`;
 
@@ -3074,21 +3077,14 @@ function AIPlannerModal({
         parts: [{ text: m.content }]
       }));
       
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: conversationHistory,
-            systemInstruction: { parts: [{ text: PLAN_SYSTEM_PROMPT }] },
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 4000,
-            }
-          })
-        }
-      );
+      const response = await fetch(GEMINI_EDGE_FUNCTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: conversationHistory,
+          systemPrompt: PLAN_SYSTEM_PROMPT
+        })
+      });
 
       const data = await response.json();
       
@@ -3128,21 +3124,14 @@ function AIPlannerModal({
         parts: [{ text: 'Now break this plan into objectives, goals, and tasks that I can track.' }]
       });
       
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: conversationHistory,
-            systemInstruction: { parts: [{ text: STRUCTURE_SYSTEM_PROMPT }] },
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 2000,
-            }
-          })
-        }
-      );
+      const response = await fetch(GEMINI_EDGE_FUNCTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: conversationHistory,
+          systemPrompt: STRUCTURE_SYSTEM_PROMPT
+        })
+      });
 
       const data = await response.json();
       
