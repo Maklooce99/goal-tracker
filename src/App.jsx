@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
   DndContext,
@@ -69,101 +69,6 @@ const darkTheme = {
   danger: '#ef4444',
   modalOverlay: 'rgba(0,0,0,0.7)',
 };
-
-// ============================================
-// AI PLANNING CONFIGURATION
-// ============================================
-
-const MEAL_PLAN_FLOW = {
-  category: 'meal_plan',
-  title: 'Meal Plan',
-  icon: '🥗',
-  intro: {
-    headline: "Let's build a meal plan that fits YOUR life.",
-    bullets: [
-      "Your body & activity level",
-      "Your goals",
-      "Any dietary restrictions"
-    ],
-    deliverables: [
-      "7-day meal plan with recipes",
-      "Shopping list by aisle",
-      "Meal prep tips"
-    ],
-    duration: "1 minute"
-  },
-  questions: [
-    {
-      id: 'weight',
-      text: "What's your current weight?",
-      type: 'input',
-      inputType: 'number',
-      placeholder: "e.g., 165",
-      suffix: 'lbs'
-    },
-    {
-      id: 'gender',
-      text: "What's your gender?",
-      type: 'choice',
-      options: ['Male', 'Female', 'Other']
-    },
-    {
-      id: 'age',
-      text: "How old are you?",
-      type: 'input',
-      inputType: 'number',
-      placeholder: "e.g., 35"
-    },
-    {
-      id: 'weight_goal',
-      text: "What's your goal?",
-      type: 'choice',
-      options: ['Lose weight', 'Maintain weight', 'Gain weight']
-    },
-    {
-      id: 'exercise_frequency',
-      text: "How many times do you exercise per week?",
-      type: 'choice',
-      options: ['0-1 times', '2-3 times', '4-5 times', '6+ times']
-    },
-    {
-      id: 'specific_goals',
-      text: "Any specific goals?",
-      type: 'freeform',
-      placeholder: "e.g., more protein, budget-friendly, quick meals, more energy..."
-    },
-    {
-      id: 'restrictions',
-      text: "Any dietary restrictions?",
-      type: 'freeform',
-      placeholder: "e.g., vegetarian, no nuts, gluten-free, lactose intolerant..."
-    }
-  ],
-  systemPrompt: `Create a 7-day meal plan as valid JSON. Include breakfast, lunch, dinner for each day.
-
-Return this exact JSON structure:
-{
-  "name": "Weekly Meal Plan",
-  "summary": "Brief description",
-  "daily_calories": 2000,
-  "days": [
-    {
-      "day": "Monday",
-      "breakfast": {"name": "Meal", "calories": 400, "ingredients": ["item 1", "item 2"]},
-      "lunch": {"name": "Meal", "calories": 500, "ingredients": ["item 1", "item 2"]},
-      "dinner": {"name": "Meal", "calories": 600, "ingredients": ["item 1", "item 2"]}
-    }
-  ],
-  "shopping_list": ["item 1", "item 2", "item 3"]
-}
-
-Include all 7 days (Monday through Sunday). Keep it simple and valid JSON.`
-};
-
-const PLAN_CATEGORIES = [
-  MEAL_PLAN_FLOW,
-  // Future: FITNESS_PLAN_FLOW, TRIP_PLAN_FLOW, etc.
-];
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -271,6 +176,7 @@ const useGoals = () => {
   const [objectives, setObjectives] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [planTemplates, setPlanTemplates] = useState([]);
   const [settings, setSettings] = useState({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -338,6 +244,15 @@ const useGoals = () => {
         if (plansError) {
           console.error('Plans error:', plansError);
         }
+
+        const { data: planTemplatesData, error: planTemplatesError } = await supabase
+          .from('plan_templates')
+          .select('*')
+          .order('sort_order', { ascending: true });
+        
+        if (planTemplatesError) {
+          console.error('Plan templates error:', planTemplatesError);
+        }
         
         const entriesMap = {};
         entriesData?.forEach(entry => {
@@ -355,6 +270,7 @@ const useGoals = () => {
         setObjectives(objectivesData || []);
         setTasks(tasksData || []);
         setPlans(plansData || []);
+        setPlanTemplates(planTemplatesData || []);
         setSettings(settingsMap);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -809,12 +725,70 @@ const useGoals = () => {
     }
   }, []);
 
+  // Plan template functions
+  const savePlanTemplate = useCallback(async (templateData, templateId = null) => {
+    try {
+      if (templateId) {
+        // Update existing
+        const { data, error } = await supabase
+          .from('plan_templates')
+          .update({
+            name: templateData.name,
+            icon: templateData.icon,
+            prompt_template: templateData.prompt_template
+          })
+          .eq('id', templateId)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        setPlanTemplates(prev => prev.map(t => t.id === templateId ? data : t));
+        return data;
+      } else {
+        // Create new
+        const maxOrder = planTemplates.reduce((max, t) => Math.max(max, t.sort_order || 0), 0);
+        const { data, error } = await supabase
+          .from('plan_templates')
+          .insert({
+            name: templateData.name,
+            icon: templateData.icon,
+            prompt_template: templateData.prompt_template,
+            sort_order: maxOrder + 1
+          })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        setPlanTemplates(prev => [...prev, data]);
+        return data;
+      }
+    } catch (err) {
+      console.error('Error saving plan template:', err);
+      return null;
+    }
+  }, [planTemplates]);
+
+  const deletePlanTemplate = useCallback(async (templateId) => {
+    try {
+      const { error } = await supabase
+        .from('plan_templates')
+        .delete()
+        .eq('id', templateId);
+      
+      if (error) throw error;
+      setPlanTemplates(prev => prev.filter(t => t.id !== templateId));
+    } catch (err) {
+      console.error('Error deleting plan template:', err);
+    }
+  }, []);
+
   return { 
-    goals, entries, objectives, tasks, plans, settings, isLoaded, 
+    goals, entries, objectives, tasks, plans, planTemplates, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
-    savePlan, archivePlan, linkPlanItem
+    savePlan, archivePlan, linkPlanItem,
+    savePlanTemplate, deletePlanTemplate
   };
 };
 
@@ -3004,175 +2978,248 @@ function TaskEditor({ task, objectives, onSave, onDelete, onClose, styles }) {
 // AI PLANNER MODAL
 // ============================================
 
+// System prompts for AI
+const PLAN_SYSTEM_PROMPT = `You are a helpful planning assistant. Create practical, actionable plans based on the user's input. Be conversational and ask clarifying questions if needed before generating a plan. Keep responses concise but helpful.`;
+
+const STRUCTURE_SYSTEM_PROMPT = `The user wants to track this plan. Break it into objectives, goals, and tasks using this framework:
+
+**Objectives** - Outcomes or destinations. What success looks like.
+- Usually 1-2 per plan
+- Examples: "Follow meal plan", "Establish meditation practice"
+
+**Goals** - Recurring habits tracked weekly. The behaviors that lead to objectives.
+- Has a weekly frequency target (1-7 times per week)
+- Examples: "Eat according to plan" (7x/week), "Meditate" (5x/week)
+
+**Tasks** - One-time actions to do once and complete.
+- Examples: "Buy running shoes", "Download meditation app"
+
+Return ONLY valid JSON with this structure:
+{
+  "objectives": [{ "name": "...", "reason": "..." }],
+  "goals": [{ "name": "...", "frequency": 7, "reason": "..." }],
+  "tasks": [{ "name": "...", "reason": "..." }]
+}`;
+
+// Parse [field] syntax from template
+const parseTemplateFields = (template) => {
+  const regex = /\[([^\]]+)\]/g;
+  const fields = [];
+  let match;
+  while ((match = regex.exec(template)) !== null) {
+    if (!fields.includes(match[1])) {
+      fields.push(match[1]);
+    }
+  }
+  return fields;
+};
+
+// Render template with filled values
+const renderTemplate = (template, values) => {
+  let result = template;
+  Object.entries(values).forEach(([key, value]) => {
+    result = result.replace(new RegExp(`\\[${key}\\]`, 'g'), value || `[${key}]`);
+  });
+  return result;
+};
+
 function AIPlannerModal({ 
   onClose, 
   onSavePlan, 
   onCreateItems,
+  planTemplates,
   styles, 
   theme 
 }) {
-  const [step, setStep] = useState('intro'); // intro, questions, loading, plan, convert
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [generatedPlan, setGeneratedPlan] = useState(null);
+  // Steps: select, fill, chat, structure
+  const [step, setStep] = useState('select');
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [fieldValues, setFieldValues] = useState({});
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [structuredItems, setStructuredItems] = useState(null);
+  const [selectedItems, setSelectedItems] = useState({ objectives: [], goals: [], tasks: [] });
   
-  // Conversion state
-  const [createObjective, setCreateObjective] = useState(true);
-  const [createGoal, setCreateGoal] = useState(true);
-  const [selectedTasks, setSelectedTasks] = useState({
-    grocery: true,
-    mealPrep: true
-  });
-
-  const flow = MEAL_PLAN_FLOW;
-  const questions = flow.questions;
-  const question = questions[currentQuestion];
-  const isLastQuestion = currentQuestion === questions.length - 1;
-
-  const handleAnswer = (value) => {
-    setAnswers(prev => ({ ...prev, [question.id]: value }));
+  const messagesEndRef = useRef(null);
+  
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+  
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-  const handleNext = async () => {
-    if (isLastQuestion) {
-      // Generate plan
-      setStep('loading');
-      setError(null);
+  const fields = selectedTemplate ? parseTemplateFields(selectedTemplate.prompt_template) : [];
+  const allFieldsFilled = fields.every(f => fieldValues[f]?.trim());
+
+  // Send message to Gemini
+  const sendMessage = async (userMessage, isInitial = false) => {
+    setIsLoading(true);
+    setError(null);
+    
+    const newMessages = isInitial 
+      ? [{ role: 'user', content: userMessage }]
+      : [...messages, { role: 'user', content: userMessage }];
+    
+    setMessages(newMessages);
+    setInputValue('');
+    
+    try {
+      // Build conversation history for API
+      const conversationHistory = newMessages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
       
-      try {
-        const userContext = Object.entries(answers)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join('\n');
-        
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{
-                  text: `Create a personalized 7-day meal plan for this person:
-
-${userContext}
-
-${flow.systemPrompt}
-
-CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanation before or after. 
-- Start with { and end with }
-- Use double quotes for all strings
-- No trailing commas
-- Escape any special characters in strings
-- Keep ingredient lists and instructions concise to avoid JSON errors`
-                }]
-              }],
-              generationConfig: {
-                temperature: 0.5,
-                maxOutputTokens: 8000,
-              }
-            })
-          }
-        );
-
-        const data = await response.json();
-        
-        if (data.error) {
-          throw new Error(data.error.message || 'API error');
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: conversationHistory,
+            systemInstruction: { parts: [{ text: PLAN_SYSTEM_PROMPT }] },
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 4000,
+            }
+          })
         }
-        
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (!content) {
-          throw new Error('No response from AI');
-        }
+      );
 
-        // Parse JSON from response - handle potential markdown code blocks
-        let jsonStr = content;
-        // Remove markdown code blocks if present
-        jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-        
-        // Find JSON object
-        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('Could not find meal plan in response');
-        }
-        
-        // Try to fix common JSON issues
-        let cleanJson = jsonMatch[0];
-        // Remove trailing commas before } or ]
-        cleanJson = cleanJson.replace(/,\s*([}\]])/g, '$1');
-        // Fix unescaped quotes in strings (basic attempt)
-        
-        try {
-          const plan = JSON.parse(cleanJson);
-          setGeneratedPlan(plan);
-          setStep('plan');
-        } catch (parseErr) {
-          console.error('JSON Parse Error:', parseErr);
-          console.error('Raw JSON:', cleanJson.substring(0, 500));
-          throw new Error('The AI response had formatting issues. Please try again.');
-        }
-      } catch (err) {
-        console.error('AI Error:', err);
-        setError(err.message || 'Failed to generate plan. Please try again.');
-        setStep('questions');
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.message || 'API error');
       }
-    } else {
-      setCurrentQuestion(prev => prev + 1);
+      
+      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!aiResponse) {
+        throw new Error('No response from AI');
+      }
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
+    } catch (err) {
+      console.error('AI Error:', err);
+      setError(err.message || 'Failed to get response. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleBack = () => {
-    if (currentQuestion > 0) {
-      setCurrentQuestion(prev => prev - 1);
+  // Request structure from AI
+  const requestStructure = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Build conversation history + structure request
+      const conversationHistory = messages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
+      
+      conversationHistory.push({
+        role: 'user',
+        parts: [{ text: 'Now break this plan into objectives, goals, and tasks that I can track.' }]
+      });
+      
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: conversationHistory,
+            systemInstruction: { parts: [{ text: STRUCTURE_SYSTEM_PROMPT }] },
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 2000,
+            }
+          })
+        }
+      );
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.message || 'API error');
+      }
+      
+      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!aiResponse) {
+        throw new Error('No response from AI');
+      }
+      
+      // Parse JSON from response
+      let jsonStr = aiResponse.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      
+      if (!jsonMatch) {
+        throw new Error('Could not parse structure from response');
+      }
+      
+      let cleanJson = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
+      const structure = JSON.parse(cleanJson);
+      
+      setStructuredItems(structure);
+      // Select all by default
+      setSelectedItems({
+        objectives: structure.objectives?.map((_, i) => i) || [],
+        goals: structure.goals?.map((_, i) => i) || [],
+        tasks: structure.tasks?.map((_, i) => i) || []
+      });
+      setStep('structure');
+    } catch (err) {
+      console.error('Structure Error:', err);
+      setError(err.message || 'Failed to structure plan. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSavePlan = async () => {
-    const savedPlan = await onSavePlan({
-      name: generatedPlan.name,
-      category: 'meal_plan',
-      content: generatedPlan,
-      summary: generatedPlan.summary
-    });
-    if (savedPlan) {
-      onClose();
-    }
+  // Start planning with filled template
+  const startPlanning = () => {
+    const filledPrompt = renderTemplate(selectedTemplate.prompt_template, fieldValues);
+    setStep('chat');
+    sendMessage(filledPrompt, true);
   };
 
-  const handleConvert = () => {
-    setStep('convert');
+  // Toggle item selection
+  const toggleItem = (type, index) => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [type]: prev[type].includes(index)
+        ? prev[type].filter(i => i !== index)
+        : [...prev[type], index]
+    }));
   };
 
+  // Create selected items
   const handleCreateItems = async () => {
     const items = {
-      objective: createObjective ? {
-        name: 'Follow meal plan',
-        start_date: getToday()
-      } : null,
-      goal: createGoal ? {
-        name: 'Stick to meal plan',
-        target: 7
-      } : null,
-      tasks: []
+      objectives: selectedItems.objectives.map(i => structuredItems.objectives[i]),
+      goals: selectedItems.goals.map(i => structuredItems.goals[i]),
+      tasks: selectedItems.tasks.map(i => structuredItems.tasks[i])
     };
     
-    if (selectedTasks.grocery) {
-      items.tasks.push({ name: 'Week 1 grocery shopping' });
-    }
-    if (selectedTasks.mealPrep) {
-      items.tasks.push({ name: 'Sunday meal prep' });
-    }
-
-    // Save plan first
+    // Save conversation as plan
+    const planContent = {
+      template: selectedTemplate.name,
+      messages: messages,
+      structure: structuredItems
+    };
+    
     const savedPlan = await onSavePlan({
-      name: generatedPlan.name,
-      category: 'meal_plan',
-      content: generatedPlan,
-      summary: generatedPlan.summary
+      name: `${selectedTemplate.name} - ${new Date().toLocaleDateString()}`,
+      category: selectedTemplate.name.toLowerCase().replace(/\s+/g, '_'),
+      content: planContent,
+      summary: `Created from ${selectedTemplate.name} template`
     });
 
     if (savedPlan) {
@@ -3181,384 +3228,419 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
     }
   };
 
-  const canProceed = question?.type === 'choice' 
-    ? !!answers[question?.id]
-    : question?.type === 'input'
-    ? !!answers[question?.id]
-    : true;
+  // Handle enter key in input
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && inputValue.trim() && !isLoading) {
+      e.preventDefault();
+      sendMessage(inputValue);
+    }
+  };
 
   return (
     <div style={styles.aiModalOverlay} onClick={onClose}>
-      <div style={styles.aiModal} onClick={e => e.stopPropagation()}>
+      <div style={{...styles.aiModal, maxHeight: '80vh'}} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={styles.aiModalHeader}>
-          <span style={styles.aiModalIcon}>{flow.icon}</span>
+          <span style={styles.aiModalIcon}>
+            {step === 'select' ? '✨' : selectedTemplate?.icon || '📋'}
+          </span>
           <span style={styles.aiModalTitle}>
-            {step === 'convert' ? 'Convert to Tracker' : flow.title}
+            {step === 'select' ? 'Plan with AI' : 
+             step === 'structure' ? 'Structure for Tracker' :
+             selectedTemplate?.name || 'AI Planner'}
           </span>
           <button onClick={onClose} style={styles.aiModalClose}>×</button>
         </div>
 
         {/* Body */}
-        <div style={styles.aiModalBody}>
-          {step === 'intro' && (
-            <div style={styles.aiIntro}>
-              <h2 style={styles.aiIntroHeadline}>{flow.intro.headline}</h2>
-              
-              <div style={styles.aiIntroSection}>
-                <div style={styles.aiIntroLabel}>I'll ask about:</div>
-                <ul style={styles.aiIntroBullets}>
-                  {flow.intro.bullets.map((bullet, i) => (
-                    <li key={i} style={styles.aiIntroBullet}>• {bullet}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div style={styles.aiIntroSection}>
-                <div style={styles.aiIntroLabel}>Then I'll create:</div>
-                <ul style={styles.aiIntroBullets}>
-                  {flow.intro.deliverables.map((item, i) => (
-                    <li key={i} style={styles.aiIntroBullet}>✓ {item}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div style={styles.aiIntroDuration}>
-                ⏱ Takes about {flow.intro.duration}
+        <div style={{...styles.aiModalBody, display: 'flex', flexDirection: 'column'}}>
+          
+          {/* Step 1: Select Template */}
+          {step === 'select' && (
+            <div>
+              <p style={{ fontSize: '14px', color: theme.textMuted, marginBottom: '16px' }}>
+                Choose a planning template to get started:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {planTemplates.map(template => (
+                  <button
+                    key={template.id}
+                    onClick={() => { setSelectedTemplate(template); setStep('fill'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '14px 16px',
+                      background: theme.bgSecondary,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontSize: '24px' }}>{template.icon}</span>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>
+                      {template.name}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {step === 'questions' && (
-            <>
-              {/* Progress dots */}
-              <div style={styles.aiProgress}>
-                {questions.map((_, idx) => (
-                  <div 
-                    key={idx} 
+          {/* Step 2: Fill in the Blanks */}
+          {step === 'fill' && selectedTemplate && (
+            <div>
+              <p style={{ fontSize: '13px', color: theme.textMuted, marginBottom: '16px' }}>
+                Fill in the blanks to personalize your plan:
+              </p>
+              <div style={{
+                background: theme.bgSecondary,
+                border: `1px solid ${theme.border}`,
+                borderRadius: '8px',
+                padding: '16px',
+                fontSize: '14px',
+                lineHeight: '2.2',
+                color: theme.text,
+              }}>
+                {selectedTemplate.prompt_template.split(/(\[[^\]]+\])/).map((part, i) => {
+                  const match = part.match(/^\[([^\]]+)\]$/);
+                  if (match) {
+                    const fieldName = match[1];
+                    return (
+                      <input
+                        key={i}
+                        type="text"
+                        value={fieldValues[fieldName] || ''}
+                        onChange={e => setFieldValues(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                        placeholder={fieldName}
+                        style={{
+                          width: `${Math.max(80, fieldName.length * 9)}px`,
+                          padding: '4px 8px',
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          background: theme.bg,
+                          color: theme.text,
+                          margin: '0 2px',
+                        }}
+                      />
+                    );
+                  }
+                  return <span key={i}>{part}</span>;
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Chat */}
+          {step === 'chat' && (
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: '300px' }}>
+              {/* Messages */}
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                marginBottom: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                {messages.map((msg, i) => (
+                  <div
+                    key={i}
                     style={{
-                      ...styles.aiProgressDot,
-                      ...(idx < currentQuestion ? styles.aiProgressDotComplete : {}),
-                      ...(idx === currentQuestion ? styles.aiProgressDotActive : {}),
-                    }} 
-                  />
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      fontSize: '13px',
+                      lineHeight: '1.5',
+                      background: msg.role === 'user' ? theme.primary : theme.bgSecondary,
+                      color: msg.role === 'user' ? '#fff' : theme.text,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {msg.content}
+                  </div>
                 ))}
+                {isLoading && (
+                  <div style={{
+                    alignSelf: 'flex-start',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: theme.bgSecondary,
+                    color: theme.textMuted,
+                    fontSize: '13px',
+                  }}>
+                    Thinking...
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
 
+              {/* Error */}
               {error && (
-                <div style={{ 
-                  padding: '10px 14px', 
-                  background: theme.danger + '20', 
+                <div style={{
+                  padding: '10px 14px',
+                  background: theme.danger + '20',
                   borderRadius: '6px',
-                  marginBottom: '16px',
+                  marginBottom: '12px',
                   fontSize: '13px',
-                  color: theme.danger 
+                  color: theme.danger
                 }}>
                   {error}
                 </div>
               )}
 
-              {/* Question */}
-              <div style={styles.aiQuestion}>
-                <div style={styles.aiQuestionText}>{question.text}</div>
-                
-                {question.type === 'freeform' && (
-                  <input
-                    type="text"
-                    value={answers[question.id] || ''}
-                    onChange={e => handleAnswer(e.target.value)}
-                    placeholder={question.placeholder}
-                    style={styles.aiQuestionInput}
-                    autoFocus
-                  />
-                )}
-
-                {question.type === 'input' && (
-                  <div style={styles.aiInputWrapper}>
-                    <input
-                      type={question.inputType || 'text'}
-                      value={answers[question.id] || ''}
-                      onChange={e => handleAnswer(e.target.value)}
-                      placeholder={question.placeholder}
-                      style={styles.aiQuestionInput}
-                      autoFocus
-                    />
-                    {question.suffix && (
-                      <span style={styles.aiInputSuffix}>{question.suffix}</span>
-                    )}
-                  </div>
-                )}
-
-                {question.type === 'choice' && (
-                  <div style={styles.aiChoices}>
-                    {question.options.map(option => (
-                      <button
-                        key={option}
-                        onClick={() => handleAnswer(option)}
-                        style={{
-                          ...styles.aiChoice,
-                          ...(answers[question.id] === option ? styles.aiChoiceSelected : {}),
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {step === 'loading' && (
-            <div style={styles.aiLoading}>
-              <div style={styles.aiLoadingSpinner} />
-              <div style={styles.aiLoadingText}>Creating your personalized meal plan...</div>
-              <div style={styles.aiLoadingSubtext}>This may take 15-30 seconds</div>
-            </div>
-          )}
-
-          {step === 'plan' && generatedPlan && (
-            <div style={styles.planViewer}>
-              <div style={styles.planHeader}>
-                <div style={styles.planName}>{generatedPlan.name}</div>
-                <div style={styles.planSummary}>
-                  {generatedPlan.summary || `${generatedPlan.daily_calories} cal/day`}
-                </div>
-              </div>
-
-              {/* Days */}
-              {generatedPlan.days?.slice(0, 3).map(day => (
-                <div key={day.day} style={styles.planDay}>
-                  <div style={styles.planDayHeader}>{day.day}</div>
-                  {['breakfast', 'lunch', 'dinner'].map(mealType => {
-                    const meal = day[mealType] || day.meals?.[mealType];
-                    if (!meal) return null;
-                    return (
-                      <div key={mealType} style={styles.planMeal}>
-                        <div style={styles.planMealType}>{mealType}</div>
-                        <div style={styles.planMealName}>{meal.name}</div>
-                        {meal.calories && (
-                          <div style={styles.planMealMeta}>{meal.calories} cal</div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-              
-              {generatedPlan.days?.length > 3 && (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '10px',
-                  fontSize: '12px',
-                  color: theme.textMuted 
-                }}>
-                  + {generatedPlan.days.length - 3} more days
-                </div>
-              )}
-
-              {/* Shopping list preview */}
-              {generatedPlan.shopping_list && (
-                <div style={styles.planSection}>
-                  <div style={styles.planSectionTitle}>🛒 Shopping List</div>
-                  <div style={styles.planSectionList}>
-                    {Array.isArray(generatedPlan.shopping_list) ? (
-                      // Simple array format
-                      <div>{generatedPlan.shopping_list.slice(0, 8).join(', ')}
-                        {generatedPlan.shopping_list.length > 8 && ` +${generatedPlan.shopping_list.length - 8} more`}
-                      </div>
-                    ) : (
-                      // Object format with categories
-                      Object.entries(generatedPlan.shopping_list).slice(0, 3).map(([category, items]) => (
-                        <div key={category}>
-                          <strong>{category}:</strong> {Array.isArray(items) ? items.slice(0, 4).join(', ') : items}
-                          {Array.isArray(items) && items.length > 4 && ` +${items.length - 4} more`}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div style={styles.planActions}>
-                <button onClick={handleSavePlan} style={styles.planSaveBtn}>
-                  📥 Save Plan
-                </button>
-                <button onClick={handleConvert} style={styles.planConvertBtn}>
-                  ➡️ Convert to Tracker
+              {/* Input */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={e => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type a message..."
+                  disabled={isLoading}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    background: theme.bg,
+                    color: theme.text,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={() => inputValue.trim() && sendMessage(inputValue)}
+                  disabled={!inputValue.trim() || isLoading}
+                  style={{
+                    padding: '10px 16px',
+                    background: theme.primary,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: inputValue.trim() && !isLoading ? 'pointer' : 'not-allowed',
+                    opacity: inputValue.trim() && !isLoading ? 1 : 0.5,
+                    fontSize: '14px',
+                  }}
+                >
+                  Send
                 </button>
               </div>
             </div>
           )}
 
-          {step === 'convert' && (
+          {/* Step 4: Structure */}
+          {step === 'structure' && structuredItems && (
             <div>
-              <p style={{ fontSize: '13px', color: theme.textMuted, marginBottom: '20px' }}>
-                Based on your meal plan, I recommend creating these items:
+              <p style={{ fontSize: '13px', color: theme.textMuted, marginBottom: '16px' }}>
+                Select which items to create in your tracker:
               </p>
 
-              {/* Objective */}
-              <div style={styles.conversionItem}>
-                <div style={styles.conversionItemHeader}>
-                  <span style={styles.conversionItemType}>◎ Objective</span>
+              {/* Objectives */}
+              {structuredItems.objectives?.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: theme.textFaint, marginBottom: '8px', textTransform: 'uppercase' }}>
+                    Objectives
+                  </div>
+                  {structuredItems.objectives.map((item, i) => (
+                    <div
+                      key={i}
+                      onClick={() => toggleItem('objectives', i)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        padding: '10px 12px',
+                        background: theme.bgSecondary,
+                        border: `1px solid ${selectedItems.objectives.includes(i) ? theme.primary : theme.border}`,
+                        borderRadius: '6px',
+                        marginBottom: '6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '4px',
+                        border: `2px solid ${selectedItems.objectives.includes(i) ? theme.primary : theme.border}`,
+                        background: selectedItems.objectives.includes(i) ? theme.primary : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginTop: '1px',
+                      }}>
+                        {selectedItems.objectives.includes(i) && <span style={{ color: '#fff', fontSize: '11px' }}>✓</span>}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>{item.name}</div>
+                        <div style={{ fontSize: '12px', color: theme.textMuted }}>{item.reason}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div style={styles.conversionItemName}>Follow meal plan</div>
-                <div style={styles.conversionItemWhy}>
-                  This captures your overall health goal. The meal plan will be saved for reference.
-                </div>
-                <div style={styles.conversionItemActions}>
-                  <button
-                    onClick={() => setCreateObjective(true)}
-                    style={{
-                      ...styles.conversionRadio,
-                      ...(createObjective ? styles.conversionRadioSelected : {}),
-                    }}
-                  >
-                    ✓ Create
-                  </button>
-                  <button
-                    onClick={() => setCreateObjective(false)}
-                    style={{
-                      ...styles.conversionRadio,
-                      ...(!createObjective ? styles.conversionRadioSelected : {}),
-                    }}
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
+              )}
 
-              {/* Goal */}
-              <div style={styles.conversionItem}>
-                <div style={styles.conversionItemHeader}>
-                  <span style={styles.conversionItemType}>⟳ Goal (7x/week)</span>
+              {/* Goals */}
+              {structuredItems.goals?.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: theme.textFaint, marginBottom: '8px', textTransform: 'uppercase' }}>
+                    Goals (Weekly)
+                  </div>
+                  {structuredItems.goals.map((item, i) => (
+                    <div
+                      key={i}
+                      onClick={() => toggleItem('goals', i)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        padding: '10px 12px',
+                        background: theme.bgSecondary,
+                        border: `1px solid ${selectedItems.goals.includes(i) ? theme.primary : theme.border}`,
+                        borderRadius: '6px',
+                        marginBottom: '6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '4px',
+                        border: `2px solid ${selectedItems.goals.includes(i) ? theme.primary : theme.border}`,
+                        background: selectedItems.goals.includes(i) ? theme.primary : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginTop: '1px',
+                      }}>
+                        {selectedItems.goals.includes(i) && <span style={{ color: '#fff', fontSize: '11px' }}>✓</span>}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>
+                          {item.name} <span style={{ color: theme.textMuted, fontWeight: '400' }}>({item.frequency}x/week)</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: theme.textMuted }}>{item.reason}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div style={styles.conversionItemName}>Stick to meal plan</div>
-                <div style={styles.conversionItemWhy}>
-                  Track daily adherence to build the habit. Check off each day you follow the plan.
-                </div>
-                <div style={styles.conversionItemActions}>
-                  <button
-                    onClick={() => setCreateGoal(true)}
-                    style={{
-                      ...styles.conversionRadio,
-                      ...(createGoal ? styles.conversionRadioSelected : {}),
-                    }}
-                  >
-                    ✓ Create
-                  </button>
-                  <button
-                    onClick={() => setCreateGoal(false)}
-                    style={{
-                      ...styles.conversionRadio,
-                      ...(!createGoal ? styles.conversionRadioSelected : {}),
-                    }}
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
+              )}
 
               {/* Tasks */}
-              <div style={styles.conversionItem}>
-                <div style={styles.conversionItemHeader}>
-                  <span style={styles.conversionItemType}>◇ Tasks (one-time)</span>
-                </div>
-                <div style={styles.conversionTaskList}>
-                  <div style={styles.conversionTask}>
-                    <div 
-                      onClick={() => setSelectedTasks(prev => ({ ...prev, grocery: !prev.grocery }))}
+              {structuredItems.tasks?.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: theme.textFaint, marginBottom: '8px', textTransform: 'uppercase' }}>
+                    Tasks (One-time)
+                  </div>
+                  {structuredItems.tasks.map((item, i) => (
+                    <div
+                      key={i}
+                      onClick={() => toggleItem('tasks', i)}
                       style={{
-                        ...styles.conversionTaskCheck,
-                        ...(selectedTasks.grocery ? styles.conversionTaskCheckSelected : {}),
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        padding: '10px 12px',
+                        background: theme.bgSecondary,
+                        border: `1px solid ${selectedItems.tasks.includes(i) ? theme.primary : theme.border}`,
+                        borderRadius: '6px',
+                        marginBottom: '6px',
+                        cursor: 'pointer',
                       }}
                     >
-                      {selectedTasks.grocery && <span style={{ color: theme.bg, fontSize: '10px' }}>✓</span>}
+                      <div style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '4px',
+                        border: `2px solid ${selectedItems.tasks.includes(i) ? theme.primary : theme.border}`,
+                        background: selectedItems.tasks.includes(i) ? theme.primary : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginTop: '1px',
+                      }}>
+                        {selectedItems.tasks.includes(i) && <span style={{ color: '#fff', fontSize: '11px' }}>✓</span>}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>{item.name}</div>
+                        <div style={{ fontSize: '12px', color: theme.textMuted }}>{item.reason}</div>
+                      </div>
                     </div>
-                    Week 1 grocery shopping
-                  </div>
-                  <div style={styles.conversionTask}>
-                    <div 
-                      onClick={() => setSelectedTasks(prev => ({ ...prev, mealPrep: !prev.mealPrep }))}
-                      style={{
-                        ...styles.conversionTaskCheck,
-                        ...(selectedTasks.mealPrep ? styles.conversionTaskCheckSelected : {}),
-                      }}
-                    >
-                      {selectedTasks.mealPrep && <span style={{ color: theme.bg, fontSize: '10px' }}>✓</span>}
-                    </div>
-                    Sunday meal prep
-                  </div>
+                  ))}
                 </div>
-              </div>
-
-              <button onClick={handleCreateItems} style={styles.createItemsBtn}>
-                Create {[createObjective, createGoal, selectedTasks.grocery, selectedTasks.mealPrep].filter(Boolean).length} Items
-              </button>
+              )}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        {step === 'intro' && (
-          <div style={styles.aiModalFooter}>
-            <button 
-              onClick={() => setStep('questions')}
-              style={styles.aiNextBtn}
-            >
-              Let's Start →
-            </button>
-          </div>
-        )}
+        <div style={styles.aiModalFooter}>
+          {step === 'select' && (
+            <div style={{ flex: 1 }} />
+          )}
 
-        {step === 'questions' && (
-          <div style={styles.aiModalFooter}>
-            {currentQuestion > 0 ? (
-              <button onClick={handleBack} style={styles.aiBackBtn}>
+          {step === 'fill' && (
+            <>
+              <button onClick={() => { setStep('select'); setSelectedTemplate(null); setFieldValues({}); }} style={styles.aiBackBtn}>
                 ← Back
               </button>
-            ) : (
-              <button onClick={() => setStep('intro')} style={styles.aiBackBtn}>
+              <button
+                onClick={startPlanning}
+                disabled={!allFieldsFilled}
+                style={{
+                  ...styles.aiNextBtn,
+                  ...(!allFieldsFilled ? styles.aiNextBtnDisabled : {}),
+                }}
+              >
+                Start Planning →
+              </button>
+            </>
+          )}
+
+          {step === 'chat' && (
+            <>
+              <button onClick={() => setStep('fill')} style={styles.aiBackBtn}>
                 ← Back
               </button>
-            )}
-            <button 
-              onClick={handleNext}
-              disabled={!canProceed}
-              style={{
-                ...styles.aiNextBtn,
-                ...(!canProceed ? styles.aiNextBtnDisabled : {}),
-              }}
-            >
-              {isLastQuestion ? 'Generate Plan ✨' : 'Next →'}
-            </button>
-          </div>
-        )}
+              <button
+                onClick={requestStructure}
+                disabled={messages.length < 2 || isLoading}
+                style={{
+                  ...styles.planConvertBtn,
+                  opacity: messages.length < 2 || isLoading ? 0.5 : 1,
+                  cursor: messages.length < 2 || isLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                🎯 Structure for Tracker
+              </button>
+            </>
+          )}
 
-        {step === 'plan' && (
-          <div style={styles.aiModalFooter}>
-            <button onClick={() => { setStep('questions'); setCurrentQuestion(0); }} style={styles.aiBackBtn}>
-              ← Start Over
-            </button>
-          </div>
-        )}
-
-        {step === 'convert' && (
-          <div style={styles.aiModalFooter}>
-            <button onClick={() => setStep('plan')} style={styles.aiBackBtn}>
-              ← Back to Plan
-            </button>
-          </div>
-        )}
+          {step === 'structure' && (
+            <>
+              <button onClick={() => setStep('chat')} style={styles.aiBackBtn}>
+                ← Back to Chat
+              </button>
+              <button
+                onClick={handleCreateItems}
+                disabled={selectedItems.objectives.length + selectedItems.goals.length + selectedItems.tasks.length === 0}
+                style={{
+                  ...styles.aiNextBtn,
+                  ...(selectedItems.objectives.length + selectedItems.goals.length + selectedItems.tasks.length === 0 ? styles.aiNextBtnDisabled : {}),
+                }}
+              >
+                Create {selectedItems.objectives.length + selectedItems.goals.length + selectedItems.tasks.length} Items
+              </button>
+            </>
+          )}
+        </div>
       </div>
-
-      {/* CSS animation for spinner */}
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }
@@ -3956,11 +4038,11 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 
 export default function App() {
   const { 
-    goals, entries, objectives, tasks, plans, settings, isLoaded, 
+    goals, entries, objectives, tasks, plans, planTemplates, settings, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
-    savePlan, archivePlan, linkPlanItem
+    savePlan, archivePlan, linkPlanItem, savePlanTemplate, deletePlanTemplate
   } = useGoals();
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -4051,26 +4133,30 @@ export default function App() {
   const handleCreateItemsFromPlan = async (items, planId) => {
     let objectiveId = null;
     
-    // Create objective
-    if (items.objective) {
-      const objData = await saveObjective(items.objective);
+    // Handle new structure (arrays) or old structure (single items)
+    const objectives = items.objectives || (items.objective ? [items.objective] : []);
+    const goals = items.goals || (items.goal ? [items.goal] : []);
+    const tasks = items.tasks || [];
+    
+    // Create objectives (use first one as the main objective for linking)
+    for (const obj of objectives) {
+      const objData = await saveObjective({ 
+        name: obj.name, 
+        start_date: obj.start_date || getToday() 
+      });
       if (objData) {
-        objectiveId = objData.id;
-        await linkPlanItem(planId, 'objective', objData.id);
+        if (!objectiveId) objectiveId = objData.id; // Use first objective for linking
+        if (planId) await linkPlanItem(planId, 'objective', objData.id);
       }
     }
     
-    // Create goal (linked to objective if created)
-    if (items.goal) {
-      const goalData = {
-        ...items.goal,
-        objective_id: objectiveId
-      };
-      await addGoal(goalData.name, goalData.target, goalData.objective_id);
+    // Create goals (linked to objective if created)
+    for (const goal of goals) {
+      await addGoal(goal.name, goal.frequency || goal.target || 7, objectiveId);
     }
     
     // Create tasks
-    for (const task of items.tasks) {
+    for (const task of tasks) {
       await addTask(task.name, objectiveId);
     }
   };
@@ -4770,6 +4856,7 @@ export default function App() {
           onClose={() => setShowAIPlanner(false)}
           onSavePlan={savePlan}
           onCreateItems={handleCreateItemsFromPlan}
+          planTemplates={planTemplates}
           styles={styles}
           theme={theme}
         />
