@@ -230,7 +230,10 @@ const weeksBetween = (date1, date2) => {
 // Calculate streak for a goal - consecutive days checked going backwards from today
 const calculateStreak = (goalId, entries, today) => {
   let streak = 0;
-  let currentDate = new Date(today);
+  
+  // Parse today's date properly
+  const [year, month, day] = today.split('-').map(Number);
+  let currentDate = new Date(year, month - 1, day);
   currentDate.setHours(12, 0, 0, 0);
   
   // First, check if today is checked. If not, start from yesterday.
