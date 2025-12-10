@@ -4379,6 +4379,7 @@ export default function App() {
   const [plansExpanded, setPlansExpanded] = useState(true);
   const [tasksExpanded, setTasksExpanded] = useState(true);
   const [goalsExpanded, setGoalsExpanded] = useState(true);
+  const [expandedGoalGroups, setExpandedGoalGroups] = useState(new Set(['no-objective'])); // Track which goal groups are expanded
   const [expandedObjectiveId, setExpandedObjectiveId] = useState(null);
   const [trophyExpanded, setTrophyExpanded] = useState(false);
   const [completedItems, setCompletedItems] = useState([]);
@@ -4404,6 +4405,13 @@ export default function App() {
   const today = getToday();
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const trackingStartDate = settings.tracking_start_date || getToday();
+
+  // Expand all goal groups when objectives change
+  useEffect(() => {
+    const allGroupIds = new Set(objectives.map(o => o.id));
+    allGroupIds.add('no-objective');
+    setExpandedGoalGroups(allGroupIds);
+  }, [objectives]);
 
   // Calculate Current and Pace metrics for goals
   const goalMetrics = useMemo(() => {
@@ -4552,6 +4560,47 @@ export default function App() {
     }
     return weeks.reverse();
   }, [goals, entries, trackingStartDate]);
+
+  // Group goals by objective
+  const groupedGoals = useMemo(() => {
+    const groups = [];
+    
+    // First, add groups for each objective that has goals
+    objectives.forEach(obj => {
+      const objGoals = goals.filter(g => g.objective_id === obj.id);
+      if (objGoals.length > 0) {
+        groups.push({
+          id: obj.id,
+          name: obj.name,
+          goals: objGoals,
+        });
+      }
+    });
+    
+    // Then add "No Objective" group for unassigned goals
+    const unassignedGoals = goals.filter(g => !g.objective_id);
+    if (unassignedGoals.length > 0) {
+      groups.push({
+        id: 'no-objective',
+        name: 'No Objective',
+        goals: unassignedGoals,
+      });
+    }
+    
+    return groups;
+  }, [goals, objectives]);
+
+  const toggleGoalGroup = (groupId) => {
+    setExpandedGoalGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
 
   const weekOptions = useMemo(() => {
     const options = [];
@@ -5072,33 +5121,81 @@ export default function App() {
                       </td>
                     </tr>
                   ) : (
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext
-                        items={goals.map(g => g.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {goals.map(goal => (
-                          <SortableRow
-                            key={goal.id}
-                            goal={goal}
-                            weekDates={weekDates}
-                            today={today}
-                            entries={entries}
-                            toggleEntry={toggleEntry}
-                            deleteGoal={(id) => confirmDeleteGoal(id, goal.name)}
-                            onEdit={handleEditGoal}
-                            styles={styles}
-                            theme={theme}
-                            thresholds={thresholds}
-                            streakThreshold={parseInt(settings.streak_threshold) || 2}
-                          />
-                        ))}
-                      </SortableContext>
-                    </DndContext>
+                    <>
+                      {groupedGoals.map(group => {
+                        const isGroupExpanded = expandedGoalGroups.has(group.id);
+                        return (
+                          <React.Fragment key={group.id}>
+                            {/* Group Header Row */}
+                            <tr 
+                              onClick={() => toggleGoalGroup(group.id)}
+                              style={{ 
+                                cursor: 'pointer',
+                                background: theme.bgSecondary,
+                              }}
+                            >
+                              <td colSpan={9} style={{
+                                padding: '8px 10px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                color: theme.textMuted,
+                                borderBottom: `1px solid ${theme.border}`,
+                              }}>
+                                <span style={{ 
+                                  display: 'inline-block', 
+                                  width: '16px',
+                                  color: theme.textFaint,
+                                }}>
+                                  {isGroupExpanded ? '▾' : '▸'}
+                                </span>
+                                {group.id === 'no-objective' ? (
+                                  <span style={{ fontStyle: 'italic', color: theme.textFaint }}>{group.name}</span>
+                                ) : (
+                                  <>📎 {group.name}</>
+                                )}
+                                <span style={{ 
+                                  marginLeft: '8px', 
+                                  fontWeight: '400',
+                                  color: theme.textFaint,
+                                }}>
+                                  ({group.goals.length})
+                                </span>
+                              </td>
+                            </tr>
+                            {/* Goals in this group */}
+                            {isGroupExpanded && (
+                              <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleDragEnd}
+                              >
+                                <SortableContext
+                                  items={group.goals.map(g => g.id)}
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  {group.goals.map(goal => (
+                                    <SortableRow
+                                      key={goal.id}
+                                      goal={goal}
+                                      weekDates={weekDates}
+                                      today={today}
+                                      entries={entries}
+                                      toggleEntry={toggleEntry}
+                                      deleteGoal={(id) => confirmDeleteGoal(id, goal.name)}
+                                      onEdit={handleEditGoal}
+                                      styles={styles}
+                                      theme={theme}
+                                      thresholds={thresholds}
+                                      streakThreshold={parseInt(settings.streak_threshold) || 2}
+                                    />
+                                  ))}
+                                </SortableContext>
+                              </DndContext>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </>
                   )}
                 </tbody>
               </table>
