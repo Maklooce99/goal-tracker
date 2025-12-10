@@ -2370,8 +2370,9 @@ function ObjectiveCard({
   const objectiveGoals = goals.filter(g => g.objective_id === objective.id);
   const hasDeadline = objective.target_date;
   const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
+  const totalDays = hasDeadline && objective.start_date ? daysBetween(objective.start_date, objective.target_date) + 1 : null;
   
-  // Calculate goal progress using Current/Pace model (same as Goals section)
+  // Calculate goal progress using Current/Pace model
   const getGoalProgress = (goal) => {
     const target = goal.target || 7;
     
@@ -2393,53 +2394,59 @@ function ObjectiveCard({
         currentDate.setDate(currentDate.getDate() + 1);
       }
       
-      // Calculate weeks elapsed (partial weeks count)
+      // Days and weeks elapsed
       const daysElapsed = daysBetween(objective.start_date, today) + 1;
       const weeksElapsed = daysElapsed / 7;
       
-      // Total target so far = weeks elapsed × weekly target
-      const totalTargetSoFar = weeksElapsed * target;
+      // Target so far = weeks elapsed × weekly target
+      const targetSoFar = weeksElapsed * target;
       
-      // Current: actual / target so far
-      const current = totalTargetSoFar > 0 ? Math.round((achieved / totalTargetSoFar) * 100) : 0;
+      // Current: achieved vs target so far (are you on track?)
+      const current = targetSoFar > 0 ? Math.round((achieved / targetSoFar) * 100) : 0;
       
-      // Pace: projected completion if continuing at current rate
-      // (achieved / days elapsed) × 7 = weekly rate
-      // weekly rate / target = pace percentage
-      const weeklyRate = (achieved / daysElapsed) * 7;
-      const pace = target > 0 ? Math.round((weeklyRate / target) * 100) : 0;
+      // Pace: if deadline exists, project where you'll end up
+      let pace = current; // Default to current if no deadline
+      if (hasDeadline && totalDays) {
+        const totalWeeks = totalDays / 7;
+        const totalRequired = totalWeeks * target; // Total needed by deadline
+        const dailyRate = achieved / daysElapsed;
+        const projectedTotal = dailyRate * totalDays; // Projected if you continue at this rate
+        pace = totalRequired > 0 ? Math.round((projectedTotal / totalRequired) * 100) : 0;
+      }
       
-      return { achieved, totalTargetSoFar: Math.round(totalTargetSoFar * 10) / 10, current, pace };
+      return { achieved, targetSoFar: Math.round(targetSoFar * 10) / 10, current, pace, daysElapsed };
     } else {
       // Current week only for objectives without start date
       const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
       const current = Math.round((achieved / target) * 100);
-      return { achieved, totalTargetSoFar: target, current, pace: current };
+      return { achieved, targetSoFar: target, current, pace: current, daysElapsed: 7 };
     }
   };
 
   // Calculate overall objective progress (Current/Pace)
   let totalAchieved = 0;
   let totalTargetSoFar = 0;
-  let totalWeeklyRate = 0;
-  let totalWeeklyTarget = 0;
+  let totalProjected = 0;
+  let totalRequired = 0;
   
   objectiveGoals.forEach(goal => {
     const progress = getGoalProgress(goal);
-    totalAchieved += progress.achieved;
-    totalTargetSoFar += progress.totalTargetSoFar;
-    
-    // For pace calculation
     const target = goal.target || 7;
-    totalWeeklyTarget += target;
-    if (objective.start_date) {
-      const daysElapsed = daysBetween(objective.start_date, today) + 1;
-      totalWeeklyRate += (progress.achieved / daysElapsed) * 7;
+    
+    totalAchieved += progress.achieved;
+    totalTargetSoFar += progress.targetSoFar;
+    
+    // For pace: project each goal to deadline
+    if (hasDeadline && totalDays && progress.daysElapsed > 0) {
+      const dailyRate = progress.achieved / progress.daysElapsed;
+      totalProjected += dailyRate * totalDays;
+      const totalWeeks = totalDays / 7;
+      totalRequired += totalWeeks * target;
     }
   });
   
   const current = totalTargetSoFar > 0 ? Math.round((totalAchieved / totalTargetSoFar) * 100) : 0;
-  const pace = totalWeeklyTarget > 0 ? Math.round((totalWeeklyRate / totalWeeklyTarget) * 100) : 0;
+  const pace = hasDeadline && totalRequired > 0 ? Math.round((totalProjected / totalRequired) * 100) : current;
   const currentColor = current >= thresholds.green ? theme.success : current >= thresholds.yellow ? theme.warning : theme.danger;
   const paceColor = pace >= thresholds.green ? theme.success : pace >= thresholds.yellow ? theme.warning : theme.danger;
 
@@ -2466,10 +2473,11 @@ function ObjectiveCard({
           <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
         )}
         {objectiveGoals.length > 0 && (
-          <span style={{ fontSize: '12px', color: theme.textMuted, marginLeft: 'auto' }}>
-            <span style={{ color: currentColor }}>{current}%</span>
-            <span style={{ margin: '0 4px', color: theme.textFaint }}>/</span>
-            <span style={{ color: paceColor }}>{pace}%</span>
+          <span style={{ fontSize: '11px', marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+            <span><span style={{ color: theme.textFaint }}>C: </span><span style={{ color: currentColor }}>{current}%</span></span>
+            {hasDeadline && (
+              <span><span style={{ color: theme.textFaint }}>P: </span><span style={{ color: paceColor }}>{pace}%</span></span>
+            )}
           </span>
         )}
       </button>
@@ -2487,10 +2495,11 @@ function ObjectiveCard({
                 return (
                   <div key={goal.id} style={styles.objectiveGoalRow}>
                     <span style={styles.objectiveGoalName}>{goal.name}</span>
-                    <span style={{ fontSize: '12px', color: theme.textMuted, marginLeft: 'auto' }}>
-                      <span style={{ color: goalCurrentColor }}>{progress.current}%</span>
-                      <span style={{ margin: '0 4px', color: theme.textFaint }}>/</span>
-                      <span style={{ color: goalPaceColor }}>{progress.pace}%</span>
+                    <span style={{ fontSize: '11px', marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+                      <span><span style={{ color: theme.textFaint }}>C: </span><span style={{ color: goalCurrentColor }}>{progress.current}%</span></span>
+                      {hasDeadline && (
+                        <span><span style={{ color: theme.textFaint }}>P: </span><span style={{ color: goalPaceColor }}>{progress.pace}%</span></span>
+                      )}
                     </span>
                   </div>
                 );
