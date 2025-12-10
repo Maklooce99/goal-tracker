@@ -971,6 +971,90 @@ const useGoals = (userId) => {
     }
   }, []);
 
+  const deletePlanWithItems = useCallback(async (planId) => {
+    try {
+      // Get all linked items
+      const { data: linkedItems, error: fetchError } = await supabase
+        .from('plan_items')
+        .select('*')
+        .eq('plan_id', planId);
+      
+      if (fetchError) throw fetchError;
+      
+      const goalIds = linkedItems?.filter(i => i.item_type === 'goal').map(i => i.item_id) || [];
+      const taskIds = linkedItems?.filter(i => i.item_type === 'task').map(i => i.item_id) || [];
+      const objectiveIds = linkedItems?.filter(i => i.item_type === 'objective').map(i => i.item_id) || [];
+      
+      // Delete entries for linked goals
+      if (goalIds.length > 0) {
+        await supabase.from('entries').delete().in('goal_id', goalIds);
+      }
+      
+      // Delete linked goals
+      if (goalIds.length > 0) {
+        await supabase.from('goals').delete().in('id', goalIds);
+        setGoals(prev => prev.filter(g => !goalIds.includes(g.id)));
+        // Also clean up entries state
+        setEntries(prev => {
+          const updated = { ...prev };
+          Object.keys(updated).forEach(key => {
+            const goalId = key.split('-')[0];
+            if (goalIds.includes(goalId)) delete updated[key];
+          });
+          return updated;
+        });
+      }
+      
+      // Delete linked tasks
+      if (taskIds.length > 0) {
+        await supabase.from('tasks').delete().in('id', taskIds);
+        setTasks(prev => prev.filter(t => !taskIds.includes(t.id)));
+      }
+      
+      // Delete linked objectives
+      if (objectiveIds.length > 0) {
+        // First unlink any goals from these objectives
+        await supabase.from('goals').update({ objective_id: null }).in('objective_id', objectiveIds);
+        setGoals(prev => prev.map(g => objectiveIds.includes(g.objective_id) ? { ...g, objective_id: null } : g));
+        
+        await supabase.from('objective').delete().in('id', objectiveIds);
+        setObjectives(prev => prev.filter(o => !objectiveIds.includes(o.id)));
+      }
+      
+      // Delete plan_items links
+      await supabase.from('plan_items').delete().eq('plan_id', planId);
+      
+      // Delete the plan itself
+      await supabase.from('plans').delete().eq('id', planId);
+      setPlans(prev => prev.filter(p => p.id !== planId));
+      
+      return { goalIds, taskIds, objectiveIds };
+    } catch (err) {
+      console.error('Error deleting plan with items:', err);
+      return null;
+    }
+  }, []);
+
+  const getPlanItemCounts = useCallback(async (planId) => {
+    try {
+      const { data: linkedItems, error } = await supabase
+        .from('plan_items')
+        .select('*')
+        .eq('plan_id', planId);
+      
+      if (error) throw error;
+      
+      return {
+        goals: linkedItems?.filter(i => i.item_type === 'goal').length || 0,
+        tasks: linkedItems?.filter(i => i.item_type === 'task').length || 0,
+        objectives: linkedItems?.filter(i => i.item_type === 'objective').length || 0,
+      };
+    } catch (err) {
+      console.error('Error getting plan item counts:', err);
+      return { goals: 0, tasks: 0, objectives: 0 };
+    }
+  }, []);
+
   const linkPlanItem = useCallback(async (planId, itemType, itemId) => {
     try {
       const { error } = await supabase
@@ -1046,10 +1130,10 @@ const useGoals = (userId) => {
 
   return { 
     goals, entries, objectives, tasks, plans, planTemplates, settings, activityLog, isLoaded, 
-    addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
+    addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals, setGoals, setEntries, setTasks, setObjectives,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
-    savePlan, archivePlan, linkPlanItem,
+    savePlan, archivePlan, deletePlanWithItems, getPlanItemCounts, linkPlanItem,
     savePlanTemplate, deletePlanTemplate
   };
 };
@@ -3932,10 +4016,12 @@ function AIPlannerModal({
 // PLAN VIEWER MODAL
 // ============================================
 
-function PlanViewerModal({ plan, onClose, onArchive, onConvert, styles, theme }) {
+function PlanViewerModal({ plan, onClose, onArchive, onDelete, onConvert, styles, theme }) {
   const [showConvert, setShowConvert] = useState(false);
   const [createObjective, setCreateObjective] = useState(true);
   const [createGoal, setCreateGoal] = useState(true);
+  const [itemCounts, setItemCounts] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedTasks, setSelectedTasks] = useState({
     grocery: true,
     mealPrep: true
@@ -4183,10 +4269,60 @@ function PlanViewerModal({ plan, onClose, onArchive, onConvert, styles, theme })
             <button onClick={() => setShowConvert(false)} style={styles.aiBackBtn}>
               ← Back to Plan
             </button>
+          ) : showDeleteConfirm ? (
+            <div style={{ width: '100%' }}>
+              <p style={{ 
+                fontSize: '13px', 
+                color: theme.danger, 
+                marginBottom: '12px',
+                lineHeight: '1.4',
+              }}>
+                {itemCounts && (itemCounts.objectives > 0 || itemCounts.goals > 0 || itemCounts.tasks > 0) ? (
+                  <>This will permanently delete this plan and {[
+                    itemCounts.objectives > 0 && `${itemCounts.objectives} objective${itemCounts.objectives > 1 ? 's' : ''}`,
+                    itemCounts.goals > 0 && `${itemCounts.goals} goal${itemCounts.goals > 1 ? 's' : ''} (including tracking history)`,
+                    itemCounts.tasks > 0 && `${itemCounts.tasks} task${itemCounts.tasks > 1 ? 's' : ''}`
+                  ].filter(Boolean).join(', ')} created from it.</>
+                ) : (
+                  <>This will permanently delete this plan.</>
+                )}
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setShowDeleteConfirm(false)} style={styles.aiBackBtn}>
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => { 
+                    await onDelete(plan.id); 
+                    onClose(); 
+                  }} 
+                  style={{
+                    ...styles.modalDeleteBtn,
+                    background: theme.danger,
+                    color: '#fff',
+                  }}
+                >
+                  🗑️ Delete Everything
+                </button>
+              </div>
+            </div>
           ) : (
             <>
               <button onClick={() => { onArchive(plan.id); onClose(); }} style={styles.modalDeleteBtn}>
                 Archive
+              </button>
+              <button 
+                onClick={async () => { 
+                  const counts = await onDelete(plan.id, true); // true = just get counts
+                  setItemCounts(counts);
+                  setShowDeleteConfirm(true);
+                }} 
+                style={{
+                  ...styles.modalDeleteBtn,
+                  marginLeft: '8px',
+                }}
+              >
+                🗑️ Delete
               </button>
               <div style={{ flex: 1 }} />
               <button onClick={exportMarkdown} style={styles.aiBackBtn}>
@@ -4581,10 +4717,10 @@ export default function App() {
 function GoalTracker({ user }) {
   const { 
     goals, entries, objectives, tasks, plans, planTemplates, settings, activityLog, isLoaded, 
-    addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
+    addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals, setGoals, setEntries, setTasks, setObjectives,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
-    savePlan, archivePlan, linkPlanItem, savePlanTemplate, deletePlanTemplate
+    savePlan, archivePlan, deletePlanWithItems, getPlanItemCounts, linkPlanItem, savePlanTemplate, deletePlanTemplate
   } = useGoals(user.id);
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
@@ -4705,12 +4841,46 @@ function GoalTracker({ user }) {
     
     // Create goals (linked to objective if created)
     for (const goal of goals) {
-      await addGoal(goal.name, goal.frequency || goal.target || 7, objectiveId);
+      const goalName = goal.name;
+      const goalTarget = goal.frequency || goal.target || 7;
+      
+      // Create the goal
+      const maxOrder = goals.reduce((max, g) => Math.max(max, g.sort_order || 0), 0);
+      const { data: goalData, error } = await supabase
+        .from('goals')
+        .insert({
+          name: goalName.trim(),
+          target: Math.min(7, Math.max(1, goalTarget)),
+          sort_order: maxOrder + 1,
+          objective_id: objectiveId,
+          user_id: user.id
+        })
+        .select()
+        .single();
+      
+      if (!error && goalData) {
+        setGoals(prev => [...prev, goalData]);
+        if (planId) await linkPlanItem(planId, 'goal', goalData.id);
+      }
     }
     
     // Create tasks
     for (const task of tasks) {
-      await addTask(task.name, objectiveId);
+      const { data: taskData, error } = await supabase
+        .from('tasks')
+        .insert({ 
+          name: task.name.trim(), 
+          objective_id: objectiveId,
+          start_date: getToday(),
+          user_id: user.id
+        })
+        .select()
+        .single();
+      
+      if (!error && taskData) {
+        setTasks(prev => [...prev, taskData]);
+        if (planId) await linkPlanItem(planId, 'task', taskData.id);
+      }
     }
   };
 
@@ -5681,6 +5851,12 @@ function GoalTracker({ user }) {
           plan={viewingPlan}
           onClose={() => setViewingPlan(null)}
           onArchive={(id) => confirmArchivePlan(id, viewingPlan?.name || 'this plan')}
+          onDelete={async (id, justGetCounts = false) => {
+            if (justGetCounts) {
+              return await getPlanItemCounts(id);
+            }
+            await deletePlanWithItems(id);
+          }}
           onConvert={handleCreateItemsFromPlan}
           styles={styles}
           theme={theme}
