@@ -178,7 +178,32 @@ const useGoals = () => {
   const [plans, setPlans] = useState([]);
   const [planTemplates, setPlanTemplates] = useState([]);
   const [settings, setSettings] = useState({});
+  const [activityLog, setActivityLog] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Helper to log activity
+  const logActivity = useCallback(async (action, entityType, entityId, entityName, metadata = {}) => {
+    const logEntry = {
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      entity_name: entityName,
+      metadata,
+    };
+    
+    try {
+      const { data, error } = await supabase
+        .from('activity_log')
+        .insert(logEntry)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      setActivityLog(prev => [data, ...prev]);
+    } catch (err) {
+      console.error('Error logging activity:', err);
+    }
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -253,6 +278,16 @@ const useGoals = () => {
         if (planTemplatesError) {
           console.error('Plan templates error:', planTemplatesError);
         }
+
+        const { data: activityData, error: activityError } = await supabase
+          .from('activity_log')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(500);
+        
+        if (activityError) {
+          console.error('Activity log error:', activityError);
+        }
         
         const entriesMap = {};
         entriesData?.forEach(entry => {
@@ -272,6 +307,7 @@ const useGoals = () => {
         setPlans(plansData || []);
         setPlanTemplates(planTemplatesData || []);
         setSettings(settingsMap);
+        setActivityLog(activityData || []);
       } catch (err) {
         console.error('Error loading data:', err);
       }
@@ -302,12 +338,14 @@ const useGoals = () => {
       
       if (error) throw error;
       setGoals(prev => [...prev, data]);
+      await logActivity('create', 'goal', data.id, data.name, { target: data.target, objective_id: objectiveId });
     } catch (err) {
       console.error('Error adding goal:', err);
     }
-  }, [goals]);
+  }, [goals, logActivity]);
 
   const deleteGoal = useCallback(async (id) => {
+    const goal = goals.find(g => g.id === id);
     try {
       const { error } = await supabase
         .from('goals')
@@ -324,10 +362,13 @@ const useGoals = () => {
         });
         return updated;
       });
+      if (goal) {
+        await logActivity('delete', 'goal', id, goal.name, { target: goal.target, objective_id: goal.objective_id });
+      }
     } catch (err) {
       console.error('Error deleting goal:', err);
     }
-  }, []);
+  }, [goals, logActivity]);
 
   const reorderGoals = useCallback(async (newGoals) => {
     setGoals(newGoals);
@@ -355,6 +396,7 @@ const useGoals = () => {
   const toggleEntry = useCallback(async (goalId, date) => {
     const key = `${goalId}-${date}`;
     const currentValue = entries[key];
+    const goal = goals.find(g => g.id === goalId);
     
     setEntries(prev => ({ ...prev, [key]: !currentValue }));
     
@@ -367,18 +409,20 @@ const useGoals = () => {
           .eq('date', date);
         
         if (error) throw error;
+        await logActivity('uncheck', 'entry', goalId, goal?.name || 'Unknown goal', { date });
       } else {
         const { error } = await supabase
           .from('entries')
           .insert({ goal_id: goalId, date, achieved: true });
         
         if (error) throw error;
+        await logActivity('check', 'entry', goalId, goal?.name || 'Unknown goal', { date });
       }
     } catch (err) {
       console.error('Error toggling entry:', err);
       setEntries(prev => ({ ...prev, [key]: currentValue }));
     }
-  }, [entries]);
+  }, [entries, goals, logActivity]);
 
   const saveMilestone = useCallback(async (milestoneData, existingId = null) => {
     try {
@@ -442,6 +486,7 @@ const useGoals = () => {
   const saveObjective = useCallback(async (objectiveData, existingId = null, selectedGoalIds = []) => {
     try {
       let objectiveId = existingId;
+      const oldObjective = existingId ? objectives.find(o => o.id === existingId) : null;
       
       if (existingId) {
         const { data, error } = await supabase
@@ -453,6 +498,10 @@ const useGoals = () => {
         
         if (error) throw error;
         setObjectives(prev => prev.map(o => o.id === existingId ? data : o));
+        await logActivity('update', 'objective', existingId, data.name, {
+          old: { name: oldObjective?.name, start_date: oldObjective?.start_date, target_date: oldObjective?.target_date },
+          new: { name: data.name, start_date: data.start_date, target_date: data.target_date }
+        });
       } else {
         const maxOrder = objectives.reduce((max, o) => Math.max(max, o.sort_order || 0), 0);
         const { data, error } = await supabase
@@ -464,6 +513,7 @@ const useGoals = () => {
         if (error) throw error;
         setObjectives(prev => [...prev, data]);
         objectiveId = data.id;
+        await logActivity('create', 'objective', data.id, data.name, { start_date: data.start_date, target_date: data.target_date });
       }
 
       // Update goal assignments
@@ -495,13 +545,15 @@ const useGoals = () => {
         return g;
       }));
 
+      return { id: objectiveId };
     } catch (err) {
       console.error('Error saving objective:', err);
     }
-  }, [objectives]);
+  }, [objectives, logActivity]);
 
   const deleteObjective = useCallback(async (id) => {
     if (!id) return;
+    const objective = objectives.find(o => o.id === id);
     
     try {
       // First, unlink all goals from this objective
@@ -523,10 +575,13 @@ const useGoals = () => {
       
       if (error) throw error;
       setObjectives(prev => prev.filter(o => o.id !== id));
+      if (objective) {
+        await logActivity('delete', 'objective', id, objective.name, { start_date: objective.start_date, target_date: objective.target_date });
+      }
     } catch (err) {
       console.error('Error deleting objective:', err);
     }
-  }, []);
+  }, [objectives, logActivity]);
 
   const updateGoalObjective = useCallback(async (goalId, objectiveId) => {
     try {
@@ -544,6 +599,7 @@ const useGoals = () => {
 
   const updateGoal = useCallback(async (goalData, goalId) => {
     if (!goalId) return;
+    const oldGoal = goals.find(g => g.id === goalId);
     
     try {
       const { data, error } = await supabase
@@ -559,10 +615,14 @@ const useGoals = () => {
       
       if (error) throw error;
       setGoals(prev => prev.map(g => g.id === goalId ? data : g));
+      await logActivity('update', 'goal', goalId, data.name, { 
+        old: { name: oldGoal?.name, target: oldGoal?.target, objective_id: oldGoal?.objective_id },
+        new: { name: data.name, target: data.target, objective_id: data.objective_id }
+      });
     } catch (err) {
       console.error('Error updating goal:', err);
     }
-  }, []);
+  }, [goals, logActivity]);
 
   // Task functions
   const addTask = useCallback(async (name, objectiveId = null) => {
@@ -581,13 +641,15 @@ const useGoals = () => {
       
       if (error) throw error;
       setTasks(prev => [...prev, data]);
+      await logActivity('create', 'task', data.id, data.name, { objective_id: objectiveId });
     } catch (err) {
       console.error('Error adding task:', err);
     }
-  }, []);
+  }, [logActivity]);
 
   const updateTask = useCallback(async (taskData, taskId) => {
     if (!taskId) return;
+    const oldTask = tasks.find(t => t.id === taskId);
     
     try {
       const { data, error } = await supabase
@@ -604,23 +666,30 @@ const useGoals = () => {
       
       if (error) throw error;
       setTasks(prev => prev.map(t => t.id === taskId ? data : t));
+      await logActivity('update', 'task', taskId, data.name, {
+        old: { name: oldTask?.name, objective_id: oldTask?.objective_id },
+        new: { name: data.name, objective_id: data.objective_id }
+      });
     } catch (err) {
       console.error('Error updating task:', err);
     }
-  }, []);
+  }, [tasks, logActivity]);
 
   const toggleTaskCheck = useCallback(async (taskId, isChecked) => {
+    const task = tasks.find(t => t.id === taskId);
     try {
       // Just toggle the visual check state - don't archive yet
       setTasks(prev => prev.map(t => 
         t.id === taskId ? { ...t, checked: isChecked } : t
       ));
+      await logActivity(isChecked ? 'check' : 'uncheck', 'task', taskId, task?.name || 'Unknown task', {});
     } catch (err) {
       console.error('Error toggling task:', err);
     }
-  }, []);
+  }, [tasks, logActivity]);
 
   const archiveTask = useCallback(async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
     try {
       const { error } = await supabase
         .from('tasks')
@@ -629,12 +698,16 @@ const useGoals = () => {
       
       if (error) throw error;
       setTasks(prev => prev.filter(t => t.id !== taskId));
+      if (task) {
+        await logActivity('archive', 'task', taskId, task.name, { objective_id: task.objective_id });
+      }
     } catch (err) {
       console.error('Error archiving task:', err);
     }
-  }, []);
+  }, [tasks, logActivity]);
 
   const deleteTask = useCallback(async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
     try {
       const { error } = await supabase
         .from('tasks')
@@ -643,12 +716,16 @@ const useGoals = () => {
       
       if (error) throw error;
       setTasks(prev => prev.filter(t => t.id !== taskId));
+      if (task) {
+        await logActivity('delete', 'task', taskId, task.name, { objective_id: task.objective_id });
+      }
     } catch (err) {
       console.error('Error deleting task:', err);
     }
-  }, []);
+  }, [tasks, logActivity]);
 
   const completeObjective = useCallback(async (objectiveId) => {
+    const objective = objectives.find(o => o.id === objectiveId);
     try {
       const { error } = await supabase
         .from('objective')
@@ -667,10 +744,13 @@ const useGoals = () => {
         g.objective_id === objectiveId ? { ...g, objective_id: null } : g
       ));
       setObjectives(prev => prev.filter(o => o.id !== objectiveId));
+      if (objective) {
+        await logActivity('complete', 'objective', objectiveId, objective.name, {});
+      }
     } catch (err) {
       console.error('Error completing objective:', err);
     }
-  }, []);
+  }, [objectives, logActivity]);
 
   // Plan functions
   const savePlan = useCallback(async (planData) => {
@@ -783,7 +863,7 @@ const useGoals = () => {
   }, []);
 
   return { 
-    goals, entries, objectives, tasks, plans, planTemplates, settings, isLoaded, 
+    goals, entries, objectives, tasks, plans, planTemplates, settings, activityLog, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
@@ -834,6 +914,8 @@ const getStyles = (theme, isDark = false) => ({
     marginTop: '32px',
     paddingTop: '16px',
     borderTop: `1px solid ${theme.borderLight}`,
+    display: 'flex',
+    gap: '16px',
   },
   settingsBtn: {
     background: 'none',
@@ -3977,6 +4059,179 @@ function ConfirmDialog({ title, message, confirmText, onConfirm, onCancel, style
 }
 
 // ============================================
+// ACTIVITY LOG MODAL
+// ============================================
+
+function ActivityLogModal({ activityLog, onUndo, onClose, styles, theme }) {
+  // Group activities by date
+  const groupedActivities = useMemo(() => {
+    const groups = {};
+    activityLog.forEach(item => {
+      const date = new Date(item.created_at).toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(item);
+    });
+    return groups;
+  }, [activityLog]);
+
+  const getActionIcon = (action) => {
+    switch (action) {
+      case 'check': return '✓';
+      case 'uncheck': return '○';
+      case 'create': return '+';
+      case 'delete': return '×';
+      case 'update': return '✎';
+      case 'complete': return '🏆';
+      case 'archive': return '📦';
+      default: return '•';
+    }
+  };
+
+  const getActionColor = (action, theme) => {
+    switch (action) {
+      case 'check': return theme.success;
+      case 'uncheck': return theme.warning;
+      case 'create': return theme.primary;
+      case 'delete': return theme.danger;
+      case 'complete': return theme.success;
+      default: return theme.textMuted;
+    }
+  };
+
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
+
+  const getDescription = (item) => {
+    const { action, entity_type, entity_name, metadata } = item;
+    
+    if (entity_type === 'entry') {
+      const dateStr = metadata?.date ? new Date(metadata.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      return `${action === 'check' ? 'Checked' : 'Unchecked'} "${entity_name}" for ${dateStr}`;
+    }
+    
+    if (action === 'create') return `Created ${entity_type} "${entity_name}"`;
+    if (action === 'delete') return `Deleted ${entity_type} "${entity_name}"`;
+    if (action === 'update') return `Updated ${entity_type} "${entity_name}"`;
+    if (action === 'complete') return `Completed ${entity_type} "${entity_name}"`;
+    if (action === 'archive') return `Archived ${entity_type} "${entity_name}"`;
+    if (action === 'check') return `Checked ${entity_type} "${entity_name}"`;
+    if (action === 'uncheck') return `Unchecked ${entity_type} "${entity_name}"`;
+    
+    return `${action} ${entity_type} "${entity_name}"`;
+  };
+
+  const canUndo = (item) => {
+    // Can undo check/uncheck entries and tasks
+    if (item.entity_type === 'entry' && (item.action === 'check' || item.action === 'uncheck')) return true;
+    if (item.entity_type === 'task' && (item.action === 'check' || item.action === 'uncheck')) return true;
+    return false;
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{
+        ...styles.modal,
+        maxWidth: '400px',
+        maxHeight: '80vh',
+        display: 'flex',
+        flexDirection: 'column',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>Activity Log</h3>
+        
+        <div style={{ 
+          flex: 1, 
+          overflowY: 'auto', 
+          marginBottom: '16px',
+          marginRight: '-10px',
+          paddingRight: '10px',
+        }}>
+          {Object.keys(groupedActivities).length === 0 ? (
+            <div style={{ 
+              textAlign: 'center', 
+              color: theme.textMuted, 
+              padding: '20px',
+              fontSize: '14px',
+            }}>
+              No activity yet
+            </div>
+          ) : (
+            Object.entries(groupedActivities).map(([date, items]) => (
+              <div key={date} style={{ marginBottom: '16px' }}>
+                <div style={{ 
+                  fontSize: '12px', 
+                  fontWeight: '600', 
+                  color: theme.textMuted,
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}>
+                  {date}
+                </div>
+                {items.map(item => (
+                  <div key={item.id} style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    padding: '8px 0',
+                    borderBottom: `1px solid ${theme.border}`,
+                  }}>
+                    <span style={{ 
+                      fontSize: '14px',
+                      color: getActionColor(item.action, theme),
+                      width: '18px',
+                      textAlign: 'center',
+                    }}>
+                      {getActionIcon(item.action)}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13px', color: theme.text }}>
+                        {getDescription(item)}
+                      </div>
+                      <div style={{ fontSize: '11px', color: theme.textFaint }}>
+                        {formatTime(item.created_at)}
+                      </div>
+                    </div>
+                    {canUndo(item) && (
+                      <button
+                        onClick={() => onUndo(item)}
+                        style={{
+                          background: 'none',
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          color: theme.textMuted,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Undo
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+        
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={styles.modalCancelBtn}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS MODAL
 // ============================================
 
@@ -4094,7 +4349,7 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 
 export default function App() {
   const { 
-    goals, entries, objectives, tasks, plans, planTemplates, settings, isLoaded, 
+    goals, entries, objectives, tasks, plans, planTemplates, settings, activityLog, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
@@ -4113,6 +4368,7 @@ export default function App() {
   const [editingTask, setEditingTask] = useState(null);
   const [showTaskEditor, setShowTaskEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showActivityLog, setShowActivityLog] = useState(false);
   const [objectivesExpanded, setObjectivesExpanded] = useState(true);
   const [plansExpanded, setPlansExpanded] = useState(true);
   const [tasksExpanded, setTasksExpanded] = useState(true);
@@ -4999,6 +5255,12 @@ export default function App() {
       {/* Settings Link */}
       <div style={styles.settingsSection}>
         <button 
+          onClick={() => setShowActivityLog(true)} 
+          style={styles.settingsBtn}
+        >
+          📋 Activity
+        </button>
+        <button 
           onClick={() => setShowSettings(true)} 
           style={styles.settingsBtn}
         >
@@ -5095,6 +5357,27 @@ export default function App() {
           confirmText={confirmDialog.confirmText}
           onConfirm={confirmDialog.onConfirm}
           onCancel={() => setConfirmDialog(null)}
+          styles={styles}
+          theme={theme}
+        />
+      )}
+
+      {/* Activity Log Modal */}
+      {showActivityLog && (
+        <ActivityLogModal
+          activityLog={activityLog}
+          onUndo={(item) => {
+            // Handle undo for check/uncheck
+            if (item.entity_type === 'entry') {
+              toggleEntry(item.entity_id, item.metadata?.date);
+            } else if (item.entity_type === 'task') {
+              const task = tasks.find(t => t.id === item.entity_id);
+              if (task) {
+                toggleTaskCheck(item.entity_id, item.action === 'uncheck');
+              }
+            }
+          }}
+          onClose={() => setShowActivityLog(false)}
           styles={styles}
           theme={theme}
         />
