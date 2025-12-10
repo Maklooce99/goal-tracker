@@ -2371,21 +2371,21 @@ function ObjectiveCard({
   const hasDeadline = objective.target_date;
   const daysRemaining = hasDeadline ? daysBetween(today, objective.target_date) : null;
   
-  // Calculate goal progress using rolling average
+  // Calculate goal progress using Current/Pace model (same as Goals section)
   const getGoalProgress = (goal) => {
     const target = goal.target || 7;
     
-    if (hasDeadline && objective.start_date) {
-      // Rolling average: days passed × (target/7)
-      const daysPassed = daysBetween(objective.start_date, today) + 1;
-      const expected = Math.round(daysPassed * (target / 7));
+    if (objective.start_date) {
+      const startDate = new Date(objective.start_date);
+      startDate.setHours(12, 0, 0, 0);
+      const todayDate = new Date(today);
+      todayDate.setHours(12, 0, 0, 0);
       
       // Count achieved days from start to today
       let achieved = 0;
-      let currentDate = new Date(objective.start_date);
-      const endDate = new Date(today);
+      let currentDate = new Date(startDate);
       
-      while (currentDate <= endDate) {
+      while (currentDate <= todayDate) {
         const dateStr = getDateString(currentDate);
         if (entries[`${goal.id}-${dateStr}`]) {
           achieved++;
@@ -2393,28 +2393,55 @@ function ObjectiveCard({
         currentDate.setDate(currentDate.getDate() + 1);
       }
       
-      const pct = expected > 0 ? Math.round((achieved / expected) * 100) : 0;
-      return { achieved, expected, pct };
+      // Calculate weeks elapsed (partial weeks count)
+      const daysElapsed = daysBetween(objective.start_date, today) + 1;
+      const weeksElapsed = daysElapsed / 7;
+      
+      // Total target so far = weeks elapsed × weekly target
+      const totalTargetSoFar = weeksElapsed * target;
+      
+      // Current: actual / target so far
+      const current = totalTargetSoFar > 0 ? Math.round((achieved / totalTargetSoFar) * 100) : 0;
+      
+      // Pace: projected completion if continuing at current rate
+      // (achieved / days elapsed) × 7 = weekly rate
+      // weekly rate / target = pace percentage
+      const weeklyRate = (achieved / daysElapsed) * 7;
+      const pace = target > 0 ? Math.round((weeklyRate / target) * 100) : 0;
+      
+      return { achieved, totalTargetSoFar: Math.round(totalTargetSoFar * 10) / 10, current, pace };
     } else {
-      // Current week only for non-deadline objectives
+      // Current week only for objectives without start date
       const achieved = weekDates.filter(d => entries[`${goal.id}-${d}`]).length;
-      const pct = Math.round((achieved / target) * 100);
-      return { achieved, expected: target, pct };
+      const current = Math.round((achieved / target) * 100);
+      return { achieved, totalTargetSoFar: target, current, pace: current };
     }
   };
 
-  // Calculate overall objective progress
+  // Calculate overall objective progress (Current/Pace)
   let totalAchieved = 0;
-  let totalExpected = 0;
+  let totalTargetSoFar = 0;
+  let totalWeeklyRate = 0;
+  let totalWeeklyTarget = 0;
   
   objectiveGoals.forEach(goal => {
     const progress = getGoalProgress(goal);
     totalAchieved += progress.achieved;
-    totalExpected += progress.expected;
+    totalTargetSoFar += progress.totalTargetSoFar;
+    
+    // For pace calculation
+    const target = goal.target || 7;
+    totalWeeklyTarget += target;
+    if (objective.start_date) {
+      const daysElapsed = daysBetween(objective.start_date, today) + 1;
+      totalWeeklyRate += (progress.achieved / daysElapsed) * 7;
+    }
   });
   
-  const pct = totalExpected > 0 ? Math.round((totalAchieved / totalExpected) * 100) : 0;
-  const pctColor = pct >= thresholds.green ? theme.success : pct >= thresholds.yellow ? theme.warning : theme.danger;
+  const current = totalTargetSoFar > 0 ? Math.round((totalAchieved / totalTargetSoFar) * 100) : 0;
+  const pace = totalWeeklyTarget > 0 ? Math.round((totalWeeklyRate / totalWeeklyTarget) * 100) : 0;
+  const currentColor = current >= thresholds.green ? theme.success : current >= thresholds.yellow ? theme.warning : theme.danger;
+  const paceColor = pace >= thresholds.green ? theme.success : pace >= thresholds.yellow ? theme.warning : theme.danger;
 
   return (
     <div style={styles.objectiveCardWrapper}>
@@ -2422,7 +2449,7 @@ function ObjectiveCard({
         onClick={onToggle}
         style={{
           ...styles.objectiveCard,
-          borderLeftColor: hasDeadline ? pctColor : theme.border,
+          borderLeftColor: objectiveGoals.length > 0 ? currentColor : theme.border,
           borderBottomLeftRadius: isExpanded ? 0 : '8px',
           borderBottomRightRadius: isExpanded ? 0 : '8px',
         }}
@@ -2435,19 +2462,16 @@ function ObjectiveCard({
         {hasDeadline && (
           <span style={styles.objectiveDays}>{daysRemaining}d</span>
         )}
-        {!hasDeadline && (
+        {!hasDeadline && objectiveGoals.length === 0 && (
           <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
         )}
-        {hasDeadline && (
-          <div style={styles.objectiveProgressTrack}>
-            <div style={{
-              ...styles.objectiveProgressBar,
-              width: `${Math.min(100, pct)}%`,
-              background: pctColor,
-            }} />
-          </div>
+        {objectiveGoals.length > 0 && (
+          <span style={{ fontSize: '12px', color: theme.textMuted, marginLeft: 'auto' }}>
+            <span style={{ color: currentColor }}>{current}%</span>
+            <span style={{ margin: '0 4px', color: theme.textFaint }}>/</span>
+            <span style={{ color: paceColor }}>{pace}%</span>
+          </span>
         )}
-        <span style={{ ...styles.objectivePct, color: objectiveGoals.length > 0 ? pctColor : theme.textFaint }}>{pct}%</span>
       </button>
       
       {isExpanded && (
@@ -2458,19 +2482,16 @@ function ObjectiveCard({
             <div style={styles.objectiveGoalsList}>
               {objectiveGoals.map(goal => {
                 const progress = getGoalProgress(goal);
-                const goalPctColor = progress.pct >= thresholds.green ? theme.success : progress.pct >= thresholds.yellow ? theme.warning : theme.danger;
+                const goalCurrentColor = progress.current >= thresholds.green ? theme.success : progress.current >= thresholds.yellow ? theme.warning : theme.danger;
+                const goalPaceColor = progress.pace >= thresholds.green ? theme.success : progress.pace >= thresholds.yellow ? theme.warning : theme.danger;
                 return (
                   <div key={goal.id} style={styles.objectiveGoalRow}>
                     <span style={styles.objectiveGoalName}>{goal.name}</span>
-                    <span style={styles.objectiveGoalFraction}>{progress.achieved}/{progress.expected}</span>
-                    <div style={styles.objectiveGoalProgressTrack}>
-                      <div style={{
-                        ...styles.objectiveGoalProgressBar,
-                        width: `${Math.min(100, progress.pct)}%`,
-                        background: goalPctColor,
-                      }} />
-                    </div>
-                    <span style={{ ...styles.objectiveGoalPct, color: goalPctColor }}>{progress.pct}%</span>
+                    <span style={{ fontSize: '12px', color: theme.textMuted, marginLeft: 'auto' }}>
+                      <span style={{ color: goalCurrentColor }}>{progress.current}%</span>
+                      <span style={{ margin: '0 4px', color: theme.textFaint }}>/</span>
+                      <span style={{ color: goalPaceColor }}>{progress.pace}%</span>
+                    </span>
                   </div>
                 );
               })}
