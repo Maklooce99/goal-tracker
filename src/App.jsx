@@ -4911,12 +4911,14 @@ function GoalTracker({ user }) {
         const { data: completedTasks } = await supabase
           .from('tasks')
           .select('*')
+          .eq('user_id', user.id)
           .not('completed_at', 'is', null)
           .order('completed_at', { ascending: false });
 
         const { data: completedObjectives } = await supabase
           .from('objective')
           .select('*')
+          .eq('user_id', user.id)
           .not('completed_at', 'is', null)
           .order('completed_at', { ascending: false });
 
@@ -4932,7 +4934,7 @@ function GoalTracker({ user }) {
     };
     
     if (isLoaded) loadCompleted();
-  }, [isLoaded, tasks, objectives]);
+  }, [isLoaded, tasks, objectives, user.id]);
 
   // Set body background color for dark mode
   useEffect(() => {
