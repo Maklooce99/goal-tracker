@@ -973,6 +973,10 @@ const useGoals = (userId) => {
 
   const deletePlanWithItems = useCallback(async (planId) => {
     try {
+      // Get plan name for logging
+      const plan = plans.find(p => p.id === planId);
+      const planName = plan?.name || 'Unknown plan';
+      
       // Get all linked items
       const { data: linkedItems, error: fetchError } = await supabase
         .from('plan_items')
@@ -985,7 +989,12 @@ const useGoals = (userId) => {
       const taskIds = linkedItems?.filter(i => i.item_type === 'task').map(i => i.item_id) || [];
       const objectiveIds = linkedItems?.filter(i => i.item_type === 'objective').map(i => i.item_id) || [];
       
-      // Delete entries for linked goals
+      // Get names for logging before deleting
+      const goalNames = goals.filter(g => goalIds.includes(g.id)).map(g => g.name);
+      const taskNames = tasks.filter(t => taskIds.includes(t.id)).map(t => t.name);
+      const objectiveNames = objectives.filter(o => objectiveIds.includes(o.id)).map(o => o.name);
+      
+      // Delete entries for linked goals (but NOT activity log entries)
       if (goalIds.length > 0) {
         await supabase.from('entries').delete().in('goal_id', goalIds);
       }
@@ -1028,12 +1037,21 @@ const useGoals = (userId) => {
       await supabase.from('plans').delete().eq('id', planId);
       setPlans(prev => prev.filter(p => p.id !== planId));
       
+      // Log the deletion to activity log
+      await logActivity('delete', 'plan', planId, planName, {
+        deleted_items: {
+          goals: goalNames,
+          tasks: taskNames,
+          objectives: objectiveNames
+        }
+      });
+      
       return { goalIds, taskIds, objectiveIds };
     } catch (err) {
       console.error('Error deleting plan with items:', err);
       return null;
     }
-  }, []);
+  }, [plans, goals, tasks, objectives, logActivity]);
 
   const getPlanItemCounts = useCallback(async (planId) => {
     try {
@@ -4438,6 +4456,20 @@ function ActivityLogModal({ activityLog, onUndo, onClose, styles, theme }) {
     if (entity_type === 'entry') {
       const dateStr = metadata?.date ? new Date(metadata.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
       return `${action === 'check' ? 'Checked' : 'Unchecked'} "${entity_name}" for ${dateStr}`;
+    }
+    
+    // Special handling for plan deletion with items
+    if (entity_type === 'plan' && action === 'delete' && metadata?.deleted_items) {
+      const { goals, tasks, objectives } = metadata.deleted_items;
+      const parts = [];
+      if (objectives?.length) parts.push(`${objectives.length} objective${objectives.length > 1 ? 's' : ''}`);
+      if (goals?.length) parts.push(`${goals.length} goal${goals.length > 1 ? 's' : ''}`);
+      if (tasks?.length) parts.push(`${tasks.length} task${tasks.length > 1 ? 's' : ''}`);
+      
+      if (parts.length > 0) {
+        return `Deleted plan "${entity_name}" and ${parts.join(', ')}`;
+      }
+      return `Deleted plan "${entity_name}"`;
     }
     
     if (action === 'create') return `Created ${entity_type} "${entity_name}"`;
