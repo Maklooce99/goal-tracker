@@ -470,6 +470,7 @@ const useGoals = () => {
   }, []);
 
   const saveSetting = useCallback(async (key, value) => {
+    const oldValue = settings[key];
     setSettings(prev => ({ ...prev, [key]: value }));
     
     try {
@@ -478,10 +479,11 @@ const useGoals = () => {
         .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
       
       if (error) throw error;
+      await logActivity('update', 'setting', null, key, { old: oldValue, new: value });
     } catch (err) {
       console.error('Error saving setting:', err);
     }
-  }, []);
+  }, [settings, logActivity]);
 
   const saveObjective = useCallback(async (objectiveData, existingId = null, selectedGoalIds = []) => {
     try {
