@@ -2473,10 +2473,10 @@ function ObjectiveCard({
           <span style={styles.objectiveGoalCount}>{objectiveGoals.length} goals</span>
         )}
         {objectiveGoals.length > 0 && (
-          <span style={{ fontSize: '11px', marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-            <span><span style={{ color: theme.textFaint }}>C: </span><span style={{ color: currentColor }}>{current}%</span></span>
+          <span style={{ fontSize: '11px', marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+            <span><span style={{ color: theme.textFaint }}>Current: </span><span style={{ color: currentColor }}>{current}%</span></span>
             {hasDeadline && (
-              <span><span style={{ color: theme.textFaint }}>P: </span><span style={{ color: paceColor }}>{pace}%</span></span>
+              <span><span style={{ color: theme.textFaint }}>Pace: </span><span style={{ color: paceColor }}>{pace}%</span></span>
             )}
           </span>
         )}
@@ -2495,10 +2495,10 @@ function ObjectiveCard({
                 return (
                   <div key={goal.id} style={styles.objectiveGoalRow}>
                     <span style={styles.objectiveGoalName}>{goal.name}</span>
-                    <span style={{ fontSize: '11px', marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-                      <span><span style={{ color: theme.textFaint }}>C: </span><span style={{ color: goalCurrentColor }}>{progress.current}%</span></span>
+                    <span style={{ fontSize: '11px', marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+                      <span><span style={{ color: theme.textFaint }}>Current: </span><span style={{ color: goalCurrentColor }}>{progress.current}%</span></span>
                       {hasDeadline && (
-                        <span><span style={{ color: theme.textFaint }}>P: </span><span style={{ color: goalPaceColor }}>{progress.pace}%</span></span>
+                        <span><span style={{ color: theme.textFaint }}>Pace: </span><span style={{ color: goalPaceColor }}>{progress.pace}%</span></span>
                       )}
                     </span>
                   </div>
