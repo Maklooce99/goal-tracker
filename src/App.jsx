@@ -4909,6 +4909,52 @@ export default function App() {
                       </tr>
                     );
                   })}
+                  {/* Weekly totals row */}
+                  {goals.length > 1 && (() => {
+                    const getPctColor = (pct) => {
+                      if (pct >= thresholds.green) return theme.success;
+                      if (pct >= thresholds.yellow) return theme.warning;
+                      return theme.danger;
+                    };
+                    
+                    const weeklyTotals = weeksWithData.map(week => {
+                      const dates = getWeekDates(week.offset);
+                      let totalAchieved = 0;
+                      let totalTarget = 0;
+                      goals.forEach(goal => {
+                        totalAchieved += dates.filter(d => entries[`${goal.id}-${d}`]).length;
+                        totalTarget += goal.target || 7;
+                      });
+                      return totalTarget > 0 ? Math.round((totalAchieved / totalTarget) * 100) : 0;
+                    });
+                    
+                    const overallAvg = Math.round(weeklyTotals.reduce((a, b) => a + b, 0) / weeklyTotals.length);
+                    
+                    return (
+                      <tr style={{ borderTop: `2px solid ${theme.border}` }}>
+                        <td style={{ ...styles.tdGoalPerf, fontWeight: '600', fontSize: '12px' }}>Total</td>
+                        {weeklyTotals.map((pct, i) => (
+                          <td 
+                            key={weeksWithData[i].offset} 
+                            style={{
+                              ...styles.tdPerfPct,
+                              fontWeight: '600',
+                              color: getPctColor(pct)
+                            }}
+                          >
+                            {pct}%
+                          </td>
+                        ))}
+                        <td style={{
+                          ...styles.tdPerfPct,
+                          fontWeight: '700',
+                          color: getPctColor(overallAvg)
+                        }}>
+                          {overallAvg}%
+                        </td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
