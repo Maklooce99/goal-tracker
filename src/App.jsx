@@ -71,6 +71,171 @@ const darkTheme = {
 };
 
 // ============================================
+// AUTH COMPONENT
+// ============================================
+
+function AuthScreen({ onAuth }) {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        onAuth(data.user);
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        onAuth(data.user);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const authStyles = {
+    container: {
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: lightTheme.bg,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      padding: '20px',
+    },
+    card: {
+      background: '#fff',
+      borderRadius: '12px',
+      padding: '32px',
+      width: '100%',
+      maxWidth: '360px',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+    },
+    title: {
+      fontSize: '24px',
+      fontWeight: '600',
+      marginBottom: '8px',
+      textAlign: 'center',
+      color: lightTheme.text,
+    },
+    subtitle: {
+      fontSize: '14px',
+      color: lightTheme.textMuted,
+      textAlign: 'center',
+      marginBottom: '24px',
+    },
+    input: {
+      width: '100%',
+      padding: '12px',
+      fontSize: '14px',
+      border: `1px solid ${lightTheme.border}`,
+      borderRadius: '8px',
+      marginBottom: '12px',
+      boxSizing: 'border-box',
+      outline: 'none',
+    },
+    button: {
+      width: '100%',
+      padding: '12px',
+      fontSize: '14px',
+      fontWeight: '600',
+      background: lightTheme.primary,
+      color: '#fff',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      marginTop: '8px',
+    },
+    toggle: {
+      marginTop: '16px',
+      textAlign: 'center',
+      fontSize: '13px',
+      color: lightTheme.textMuted,
+    },
+    toggleLink: {
+      color: lightTheme.primary,
+      cursor: 'pointer',
+      textDecoration: 'underline',
+      background: 'none',
+      border: 'none',
+      fontSize: '13px',
+    },
+    error: {
+      background: '#fef2f2',
+      color: '#dc2626',
+      padding: '10px 12px',
+      borderRadius: '6px',
+      fontSize: '13px',
+      marginBottom: '12px',
+    },
+  };
+
+  return (
+    <div style={authStyles.container}>
+      <div style={authStyles.card}>
+        <h1 style={authStyles.title}>Goal Tracker</h1>
+        <p style={authStyles.subtitle}>
+          {isLogin ? 'Sign in to your account' : 'Create a new account'}
+        </p>
+        
+        <form onSubmit={handleSubmit}>
+          {error && <div style={authStyles.error}>{error}</div>}
+          
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={authStyles.input}
+            required
+          />
+          
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={authStyles.input}
+            required
+            minLength={6}
+          />
+          
+          <button type="submit" style={authStyles.button} disabled={loading}>
+            {loading ? 'Loading...' : isLogin ? 'Sign In' : 'Sign Up'}
+          </button>
+        </form>
+        
+        <div style={authStyles.toggle}>
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          <button 
+            onClick={() => { setIsLogin(!isLogin); setError(''); }}
+            style={authStyles.toggleLink}
+          >
+            {isLogin ? 'Sign Up' : 'Sign In'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // UTILITY FUNCTIONS
 // ============================================
 
@@ -169,7 +334,7 @@ const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 // DATA HOOK WITH SUPABASE
 // ============================================
 
-const useGoals = () => {
+const useGoals = (userId) => {
   const [goals, setGoals] = useState([]);
   const [entries, setEntries] = useState({});
   const [milestones, setMilestones] = useState([]);
@@ -189,6 +354,7 @@ const useGoals = () => {
       entity_id: entityId,
       entity_name: entityName,
       metadata,
+      user_id: userId,
     };
     
     try {
@@ -203,14 +369,17 @@ const useGoals = () => {
     } catch (err) {
       console.error('Error logging activity:', err);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const loadData = async () => {
+      if (!userId) return;
+      
       try {
         const { data: goalsData, error: goalsError } = await supabase
           .from('goals')
           .select('*')
+          .eq('user_id', userId)
           .order('sort_order', { ascending: true, nullsFirst: false })
           .order('created_at', { ascending: true });
         
@@ -218,13 +387,15 @@ const useGoals = () => {
         
         const { data: entriesData, error: entriesError } = await supabase
           .from('entries')
-          .select('*');
+          .select('*')
+          .eq('user_id', userId);
         
         if (entriesError) throw entriesError;
         
         const { data: milestonesData, error: milestonesError } = await supabase
           .from('milestone')
           .select('*')
+          .eq('user_id', userId)
           .order('target_date', { ascending: true });
         
         if (milestonesError) {
@@ -233,7 +404,8 @@ const useGoals = () => {
 
         const { data: settingsData, error: settingsError } = await supabase
           .from('settings')
-          .select('*');
+          .select('*')
+          .eq('user_id', userId);
         
         if (settingsError) {
           console.error('Settings error:', settingsError);
@@ -242,6 +414,7 @@ const useGoals = () => {
         const { data: objectivesData, error: objectivesError } = await supabase
           .from('objective')
           .select('*')
+          .eq('user_id', userId)
           .is('completed_at', null)
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: true });
@@ -253,6 +426,7 @@ const useGoals = () => {
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('*')
+          .eq('user_id', userId)
           .is('completed_at', null)
           .order('created_at', { ascending: true });
         
@@ -263,6 +437,7 @@ const useGoals = () => {
         const { data: plansData, error: plansError } = await supabase
           .from('plans')
           .select('*')
+          .eq('user_id', userId)
           .is('archived_at', null)
           .order('created_at', { ascending: false });
         
@@ -270,6 +445,7 @@ const useGoals = () => {
           console.error('Plans error:', plansError);
         }
 
+        // Plan templates are shared (no user_id filter)
         const { data: planTemplatesData, error: planTemplatesError } = await supabase
           .from('plan_templates')
           .select('*')
@@ -282,6 +458,7 @@ const useGoals = () => {
         const { data: activityData, error: activityError } = await supabase
           .from('activity_log')
           .select('*')
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(500);
         
@@ -315,7 +492,7 @@ const useGoals = () => {
     };
 
     loadData();
-  }, []);
+  }, [userId]);
 
   const addGoal = useCallback(async (name, target = 7, objectiveId = null) => {
     if (!name?.trim()) return;
@@ -326,7 +503,8 @@ const useGoals = () => {
       name: name.trim(),
       target: Math.min(7, Math.max(1, target)),
       sort_order: maxOrder + 1,
-      objective_id: objectiveId
+      objective_id: objectiveId,
+      user_id: userId
     };
     
     try {
@@ -342,7 +520,7 @@ const useGoals = () => {
     } catch (err) {
       console.error('Error adding goal:', err);
     }
-  }, [goals, logActivity]);
+  }, [goals, logActivity, userId]);
 
   const deleteGoal = useCallback(async (id) => {
     const goal = goals.find(g => g.id === id);
@@ -413,7 +591,7 @@ const useGoals = () => {
       } else {
         const { error } = await supabase
           .from('entries')
-          .insert({ goal_id: goalId, date, achieved: true });
+          .insert({ goal_id: goalId, date, achieved: true, user_id: userId });
         
         if (error) throw error;
         await logActivity('check', 'entry', goalId, goal?.name || 'Unknown goal', { date });
@@ -422,7 +600,7 @@ const useGoals = () => {
       console.error('Error toggling entry:', err);
       setEntries(prev => ({ ...prev, [key]: currentValue }));
     }
-  }, [entries, goals, logActivity]);
+  }, [entries, goals, logActivity, userId]);
 
   const saveMilestone = useCallback(async (milestoneData, existingId = null) => {
     try {
@@ -476,14 +654,14 @@ const useGoals = () => {
     try {
       const { error } = await supabase
         .from('settings')
-        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        .upsert({ key, value, user_id: userId, updated_at: new Date().toISOString() }, { onConflict: 'key,user_id' });
       
       if (error) throw error;
       await logActivity('update', 'setting', null, key, { old: oldValue, new: value });
     } catch (err) {
       console.error('Error saving setting:', err);
     }
-  }, [settings, logActivity]);
+  }, [settings, logActivity, userId]);
 
   const saveObjective = useCallback(async (objectiveData, existingId = null, selectedGoalIds = []) => {
     try {
@@ -508,7 +686,7 @@ const useGoals = () => {
         const maxOrder = objectives.reduce((max, o) => Math.max(max, o.sort_order || 0), 0);
         const { data, error } = await supabase
           .from('objective')
-          .insert({ ...objectiveData, sort_order: maxOrder + 1 })
+          .insert({ ...objectiveData, sort_order: maxOrder + 1, user_id: userId })
           .select()
           .single();
         
@@ -551,7 +729,7 @@ const useGoals = () => {
     } catch (err) {
       console.error('Error saving objective:', err);
     }
-  }, [objectives, logActivity]);
+  }, [objectives, logActivity, userId]);
 
   const deleteObjective = useCallback(async (id) => {
     if (!id) return;
@@ -636,7 +814,8 @@ const useGoals = () => {
         .insert({ 
           name: name.trim(), 
           objective_id: objectiveId,
-          start_date: getToday()
+          start_date: getToday(),
+          user_id: userId
         })
         .select()
         .single();
@@ -647,7 +826,7 @@ const useGoals = () => {
     } catch (err) {
       console.error('Error adding task:', err);
     }
-  }, [logActivity]);
+  }, [logActivity, userId]);
 
   const updateTask = useCallback(async (taskData, taskId) => {
     if (!taskId) return;
@@ -763,7 +942,8 @@ const useGoals = () => {
           name: planData.name,
           category: planData.category || 'meal_plan',
           content: planData.content,
-          summary: planData.summary
+          summary: planData.summary,
+          user_id: userId
         })
         .select()
         .single();
@@ -775,7 +955,7 @@ const useGoals = () => {
       console.error('Error saving plan:', err);
       return null;
     }
-  }, []);
+  }, [userId]);
 
   const archivePlan = useCallback(async (planId) => {
     try {
@@ -4350,17 +4530,62 @@ function SettingsModal({ settings, onSave, onClose, styles, theme }) {
 }
 
 // ============================================
-// MAIN APP
+// MAIN APP (with auth)
 // ============================================
 
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        color: '#666',
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen onAuth={setUser} />;
+  }
+
+  return <GoalTracker user={user} />;
+}
+
+// ============================================
+// GOAL TRACKER (main app content)
+// ============================================
+
+function GoalTracker({ user }) {
   const { 
     goals, entries, objectives, tasks, plans, planTemplates, settings, activityLog, isLoaded, 
     addGoal, deleteGoal, updateGoal, toggleEntry, reorderGoals,
     saveSetting, saveObjective, deleteObjective, completeObjective,
     addTask, updateTask, toggleTaskCheck, archiveTask, deleteTask,
     savePlan, archivePlan, linkPlanItem, savePlanTemplate, deletePlanTemplate
-  } = useGoals();
+  } = useGoals(user.id);
   const [newGoal, setNewGoal] = useState('');
   const [newTarget, setNewTarget] = useState(7);
   const [newObjectiveId, setNewObjectiveId] = useState(null);
@@ -5368,6 +5593,14 @@ export default function App() {
           style={styles.settingsBtn}
         >
           ⚙️ Settings
+        </button>
+        <button 
+          onClick={async () => {
+            await supabase.auth.signOut();
+          }} 
+          style={styles.settingsBtn}
+        >
+          🚪 Logout
         </button>
       </div>
 
