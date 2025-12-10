@@ -3940,6 +3940,43 @@ function PlanViewerModal({ plan, onClose, onArchive, onConvert, styles, theme })
 }
 
 // ============================================
+// CONFIRM DIALOG
+// ============================================
+
+function ConfirmDialog({ title, message, confirmText, onConfirm, onCancel, styles, theme }) {
+  return (
+    <div style={styles.modalOverlay} onClick={onCancel}>
+      <div style={{
+        ...styles.modal,
+        maxWidth: '340px',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={styles.modalTitle}>{title}</h3>
+        <p style={{ 
+          fontSize: '14px', 
+          color: theme.textMuted, 
+          marginBottom: '20px',
+          lineHeight: '1.5',
+        }}>
+          {message}
+        </p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={styles.modalCancelBtn}>Cancel</button>
+          <button 
+            onClick={onConfirm} 
+            style={{
+              ...styles.modalSaveBtn,
+              background: theme.danger,
+            }}
+          >
+            {confirmText || 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // SETTINGS MODAL
 // ============================================
 
@@ -4090,6 +4127,8 @@ export default function App() {
   // AI Planner state
   const [showAIPlanner, setShowAIPlanner] = useState(false);
   const [viewingPlan, setViewingPlan] = useState(null);
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState(null);
   
   const darkMode = settings.dark_mode === 'true';
   const theme = darkMode ? darkTheme : lightTheme;
@@ -4178,6 +4217,56 @@ export default function App() {
     for (const task of tasks) {
       await addTask(task.name, objectiveId);
     }
+  };
+
+  // Confirm delete helpers
+  const confirmDeleteGoal = (goalId, goalName) => {
+    setConfirmDialog({
+      title: 'Delete Goal',
+      message: `Are you sure you want to delete "${goalName}"? This will also delete all tracking history for this goal.`,
+      confirmText: 'Delete',
+      onConfirm: () => {
+        deleteGoal(goalId);
+        setConfirmDialog(null);
+      },
+    });
+  };
+
+  const confirmDeleteObjective = (objectiveId, objectiveName) => {
+    setConfirmDialog({
+      title: 'Delete Objective',
+      message: `Are you sure you want to delete "${objectiveName}"? Goals assigned to this objective will be unlinked but not deleted.`,
+      confirmText: 'Delete',
+      onConfirm: () => {
+        deleteObjective(objectiveId);
+        setConfirmDialog(null);
+      },
+    });
+  };
+
+  const confirmDeleteTask = (taskId, taskName) => {
+    setConfirmDialog({
+      title: 'Delete Task',
+      message: `Are you sure you want to delete "${taskName}"?`,
+      confirmText: 'Delete',
+      onConfirm: () => {
+        deleteTask(taskId);
+        setConfirmDialog(null);
+      },
+    });
+  };
+
+  const confirmArchivePlan = (planId, planName) => {
+    setConfirmDialog({
+      title: 'Archive Plan',
+      message: `Are you sure you want to archive "${planName}"? You can find it later in archived plans.`,
+      confirmText: 'Archive',
+      onConfirm: () => {
+        archivePlan(planId);
+        setViewingPlan(null);
+        setConfirmDialog(null);
+      },
+    });
   };
 
   const weeksWithData = useMemo(() => {
@@ -4516,7 +4605,7 @@ export default function App() {
                         </button>
                       )}
                       <button 
-                        onClick={() => deleteTask(task.id)}
+                        onClick={() => confirmDeleteTask(task.id, task.name)}
                         style={styles.taskDeleteBtn}
                       >
                         ×
@@ -4738,7 +4827,7 @@ export default function App() {
                             today={today}
                             entries={entries}
                             toggleEntry={toggleEntry}
-                            deleteGoal={deleteGoal}
+                            deleteGoal={(id) => confirmDeleteGoal(id, goal.name)}
                             onEdit={handleEditGoal}
                             styles={styles}
                             theme={theme}
@@ -4877,7 +4966,10 @@ export default function App() {
           objective={editingObjective}
           goals={goals}
           onSave={saveObjective}
-          onDelete={deleteObjective}
+          onDelete={(id) => {
+            setShowObjectiveEditor(false);
+            confirmDeleteObjective(id, editingObjective?.name || 'this objective');
+          }}
           onClose={() => setShowObjectiveEditor(false)}
           styles={styles}
           theme={theme}
@@ -4890,7 +4982,10 @@ export default function App() {
           goal={editingGoal}
           objectives={objectives}
           onSave={updateGoal}
-          onDelete={deleteGoal}
+          onDelete={(id) => {
+            setShowGoalEditor(false);
+            confirmDeleteGoal(id, editingGoal?.name || 'this goal');
+          }}
           onClose={() => setShowGoalEditor(false)}
           styles={styles}
         />
@@ -4902,7 +4997,10 @@ export default function App() {
           task={editingTask}
           objectives={objectives}
           onSave={updateTask}
-          onDelete={deleteTask}
+          onDelete={(id) => {
+            setShowTaskEditor(false);
+            confirmDeleteTask(id, editingTask?.name || 'this task');
+          }}
           onClose={() => setShowTaskEditor(false)}
           styles={styles}
         />
@@ -4936,8 +5034,21 @@ export default function App() {
         <PlanViewerModal
           plan={viewingPlan}
           onClose={() => setViewingPlan(null)}
-          onArchive={archivePlan}
+          onArchive={(id) => confirmArchivePlan(id, viewingPlan?.name || 'this plan')}
           onConvert={handleCreateItemsFromPlan}
+          styles={styles}
+          theme={theme}
+        />
+      )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmText={confirmDialog.confirmText}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
           styles={styles}
           theme={theme}
         />
