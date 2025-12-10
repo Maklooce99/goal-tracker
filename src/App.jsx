@@ -4069,7 +4069,9 @@ function ActivityLogModal({ activityLog, onUndo, onClose, styles, theme }) {
   const groupedActivities = useMemo(() => {
     const groups = {};
     activityLog.forEach(item => {
-      const date = new Date(item.created_at).toLocaleDateString('en-US', { 
+      // Ensure timestamp is treated as UTC if no timezone specified
+      const timestamp = item.created_at.endsWith('Z') ? item.created_at : item.created_at + 'Z';
+      const date = new Date(timestamp).toLocaleDateString('en-US', { 
         weekday: 'long', 
         month: 'short', 
         day: 'numeric' 
@@ -4105,7 +4107,9 @@ function ActivityLogModal({ activityLog, onUndo, onClose, styles, theme }) {
   };
 
   const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', { 
+    // Ensure timestamp is treated as UTC if no timezone specified
+    const date = new Date(timestamp.endsWith('Z') ? timestamp : timestamp + 'Z');
+    return date.toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',
       hour12: true 
