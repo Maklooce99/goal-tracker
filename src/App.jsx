@@ -4437,6 +4437,21 @@ export default function App() {
             ))}
           </div>
         )}
+        {objectivesExpanded && objectives.length === 0 && (
+          <div style={{
+            padding: '20px',
+            textAlign: 'center',
+            color: theme.textMuted,
+            fontSize: '13px',
+            background: theme.bgSecondary,
+            borderRadius: '8px',
+          }}>
+            <div style={{ marginBottom: '8px' }}>No objectives yet</div>
+            <div style={{ fontSize: '12px', color: theme.textFaint }}>
+              Objectives are outcomes you're working toward. Click + to create one.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tasks Section */}
@@ -4509,6 +4524,22 @@ export default function App() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {tasks.length === 0 && !showTaskAdd && (
+              <div style={{
+                padding: '20px',
+                textAlign: 'center',
+                color: theme.textMuted,
+                fontSize: '13px',
+                background: theme.bgSecondary,
+                borderRadius: '8px',
+              }}>
+                <div style={{ marginBottom: '8px' }}>No tasks yet</div>
+                <div style={{ fontSize: '12px', color: theme.textFaint }}>
+                  Tasks are one-time actions. Click + to add one.
+                </div>
               </div>
             )}
             
@@ -4678,8 +4709,15 @@ export default function App() {
                 <tbody>
                   {goals.length === 0 ? (
                     <tr>
-                      <td colSpan={9} style={styles.emptyRow}>
-                        No goals yet
+                      <td colSpan={9} style={{
+                        ...styles.emptyRow,
+                        padding: '20px',
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ marginBottom: '8px', color: theme.textMuted }}>No goals yet</div>
+                        <div style={{ fontSize: '12px', color: theme.textFaint }}>
+                          Goals are habits you track weekly. Click + to create one.
+                        </div>
                       </td>
                     </tr>
                   ) : (
