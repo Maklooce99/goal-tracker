@@ -4338,7 +4338,19 @@ export default function App() {
       >
         <span style={styles.aiPlannerIcon}>✨</span>
         <div style={styles.aiPlannerText}>
-          <div style={styles.aiPlannerTitle}>Plan with AI</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={styles.aiPlannerTitle}>Plan with AI</span>
+            <span style={{
+              fontSize: '9px',
+              fontWeight: '600',
+              background: '#f59e0b',
+              color: '#fff',
+              padding: '2px 5px',
+              borderRadius: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>Beta</span>
+          </div>
           <div style={styles.aiPlannerSubtitle}>Get help creating a detailed plan for any goal</div>
         </div>
         <span style={styles.aiPlannerArrow}>→</span>
